@@ -171,11 +171,11 @@ export function generateContacts(rawRows: string[][], mappings: Mappings, defaul
 
     let finalName = "";
 
-    if (name.includes('pax en') && (name.includes('CH') || name.includes('BR') || name.includes('AR') || name.includes('CO') || name.includes('PE'))) {
+    if (name.includes(' en ') && (name.includes('CH') || name.includes('BR') || name.includes('AR') || name.includes('CO') || name.includes('PE'))) {
       finalName = name;
     } else {
       const country = getCountryCode(p1 || p2);
-      finalName = `${date} ${country}${pax} ${name} - ${pax} pax en ${hotel || 'Hotel'}`;
+      finalName = `${date} ${country}x${pax} ${name} - en ${hotel || 'Hotel'}`;
     }
 
     const cleanPhone1 = p1 ? formatPhone(p1) : "";
