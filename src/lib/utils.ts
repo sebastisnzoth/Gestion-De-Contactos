@@ -154,8 +154,20 @@ export function generateContacts(rawRows: string[][], mappings: Mappings, defaul
     email = email !== undefined && email !== null ? String(email).trim() : "";
     hotel = hotel !== undefined && hotel !== null ? String(hotel).trim() : "";
     pax = pax !== undefined && pax !== null ? String(pax).trim().replace(/\D/g, '') || "1" : "1";
-    date = date !== undefined && date !== null ? String(date).trim() : defaultDate;
+    let dateStr = date !== undefined && date !== null ? String(date).trim() : defaultDate;
     activities = activities !== undefined && activities !== null ? String(activities).trim() : "";
+
+    if (dateStr) {
+      const parts = dateStr.split(/[-/]/);
+      if (parts.length === 3) {
+        let y = parts[2];
+        let m = parts[1];
+        let d = parts[0];
+        if (d.length === 4) { y = d; d = parts[2]; } // YYYY-MM-DD
+        if (y.length === 4) { y = y.slice(2); }      // YYYY -> YY
+        dateStr = `${d}/${m}/${y}`;
+      }
+    }
 
     let p1 = "";
     let p2 = "";
@@ -175,7 +187,7 @@ export function generateContacts(rawRows: string[][], mappings: Mappings, defaul
       finalName = name;
     } else {
       const country = getCountryCode(p1 || p2);
-      finalName = `${date} ${country}x${pax} ${name} - en ${hotel || 'Hotel'}`;
+      finalName = `${dateStr} ${country}x${pax} ${name} - en ${hotel || 'Hotel'}`;
     }
 
     const cleanPhone1 = p1 ? formatPhone(p1) : "";
