@@ -141,39 +141,52 @@ export function generateContacts(rawRows: string[][], mappings: Mappings, defaul
     if (row.length <= 1 && !row[0]) continue;
 
     let name = mappings.mapName !== "" ? row[mappings.mapName as number] : "";
-    let phone = mappings.mapPhone !== "" ? row[mappings.mapPhone as number] : "";
+    let phoneRaw = mappings.mapPhone !== "" ? row[mappings.mapPhone as number] : "";
     let email = mappings.mapEmail !== "" ? row[mappings.mapEmail as number] : "";
     let hotel = mappings.mapHotel !== "" ? row[mappings.mapHotel as number] : "";
     let pax = mappings.mapPax !== "" ? row[mappings.mapPax as number] : "1";
     let date = mappings.mapDate !== "" ? row[mappings.mapDate as number] : defaultDate;
 
     name = name !== undefined && name !== null ? String(name).trim() : "";
-    phone = phone !== undefined && phone !== null ? String(phone).trim() : "";
+    phoneRaw = phoneRaw !== undefined && phoneRaw !== null ? String(phoneRaw).trim() : "";
     email = email !== undefined && email !== null ? String(email).trim() : "";
     hotel = hotel !== undefined && hotel !== null ? String(hotel).trim() : "";
     pax = pax !== undefined && pax !== null ? String(pax).trim().replace(/\D/g, '') || "1" : "1";
     date = date !== undefined && date !== null ? String(date).trim() : defaultDate;
 
-    if (!name || !phone) continue;
+    let p1 = "";
+    let p2 = "";
+    if (phoneRaw.includes(',')) {
+      const parts = phoneRaw.split(',');
+      p1 = parts[0]?.trim() || "";
+      p2 = parts[1]?.trim() || "";
+    } else {
+      p1 = phoneRaw;
+    }
+
+    if (!name || (!p1 && !p2)) continue;
 
     let finalName = "";
 
     if (name.includes('pax en') && (name.includes('CH') || name.includes('BR') || name.includes('AR') || name.includes('CO') || name.includes('PE'))) {
       finalName = name;
     } else {
-      const country = getCountryCode(phone);
+      const country = getCountryCode(p1 || p2);
       finalName = `${date} ${country}${pax} ${name} - ${pax} pax en ${hotel || 'Hotel'}`;
     }
 
-    const cleanPhone = formatPhone(phone);
+    const cleanPhone1 = p1 ? formatPhone(p1) : "";
+    const cleanPhone2 = p2 ? formatPhone(p2) : "";
     const cleanEmail = (email && email.toLowerCase() !== '(no especificado)' && email !== 'n/a') ? email : "";
 
     parsedContacts.push({
       id: crypto.randomUUID(),
       fullName: finalName,
-      phone: cleanPhone,
+      phone1: cleanPhone1,
+      phone2: cleanPhone2,
       email: cleanEmail,
-      waStatus: 'unverified'
+      waStatus1: 'unverified',
+      waStatus2: 'unverified'
     });
   }
 
@@ -199,7 +212,12 @@ export function generateVCFBlob(contacts: Contact[]): Blob {
     vcfContent += "VERSION:3.0\r\n";
     vcfContent += `FN;CHARSET=UTF-8:${escapedName}\r\n`;
     vcfContent += `N;CHARSET=UTF-8:;${escapedName};;;\r\n`;
-    vcfContent += `TEL;TYPE=CELL:${c.phone}\r\n`;
+    if (c.phone1) {
+      vcfContent += `TEL;TYPE=CELL:${c.phone1}\r\n`;
+    }
+    if (c.phone2) {
+      vcfContent += `TEL;TYPE=CELL:${c.phone2}\r\n`;
+    }
     if (c.email) {
       vcfContent += `EMAIL;TYPE=INTERNET:${escapedEmail}\r\n`;
     }

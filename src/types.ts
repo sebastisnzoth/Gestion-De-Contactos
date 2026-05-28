@@ -4,9 +4,11 @@ export type WaMethod = 'manual' | 'simulation' | 'wassenger' | 'wasender';
 export interface Contact {
   id: string;
   fullName: string;
-  phone: string;
+  phone1: string;
+  phone2: string;
   email: string;
-  waStatus: WaStatus;
+  waStatus1: WaStatus;
+  waStatus2: WaStatus;
 }
 
 export interface Mappings {

@@ -114,28 +114,35 @@ export default function App() {
     setIsVerifying(true);
     const updatedContacts = [...contacts];
 
+    const verifyPhone = async (phone: string) => {
+      let exists: boolean | null = null;
+      if (config.waMethod === 'simulation') {
+        await delay(400);
+        const clean = phone.replace(/\D/g, '');
+        exists = (clean.length >= 11 && clean.length <= 13);
+      } else if (config.waMethod === 'wassenger') {
+        exists = await checkWassenger(phone, config.waToken);
+        await delay(100);
+      } else if (config.waMethod === 'wasender') {
+        exists = await checkWASender(phone, config.waToken);
+        await delay(100);
+      }
+      if (exists === true) return 'active';
+      if (exists === false) return 'inactive';
+      return 'error';
+    };
+
     for (let i = 0; i < updatedContacts.length; i++) {
-        updatedContacts[i] = { ...updatedContacts[i], waStatus: 'checking' };
+        const contact = updatedContacts[i];
+        updatedContacts[i] = { 
+          ...contact, 
+          waStatus1: contact.phone1 ? 'checking' : 'unverified',
+          waStatus2: contact.phone2 ? 'checking' : 'unverified'
+        };
         setContacts([...updatedContacts]);
 
-        const contact = updatedContacts[i];
-        let exists: boolean | null = null;
-
-        if (config.waMethod === 'simulation') {
-          await delay(400);
-          const clean = contact.phone.replace(/\D/g, '');
-          exists = (clean.length >= 11 && clean.length <= 13);
-        } else if (config.waMethod === 'wassenger') {
-          exists = await checkWassenger(contact.phone, config.waToken);
-          await delay(100);
-        } else if (config.waMethod === 'wasender') {
-          exists = await checkWASender(contact.phone, config.waToken);
-          await delay(100);
-        }
-
-        if (exists === true) updatedContacts[i].waStatus = 'active';
-        else if (exists === false) updatedContacts[i].waStatus = 'inactive';
-        else updatedContacts[i].waStatus = 'error';
+        if (contact.phone1) updatedContacts[i].waStatus1 = await verifyPhone(contact.phone1) as any;
+        if (contact.phone2) updatedContacts[i].waStatus2 = await verifyPhone(contact.phone2) as any;
 
         setContacts([...updatedContacts]);
     }
@@ -150,31 +157,31 @@ export default function App() {
 
   const updateContact = (index: number, field: keyof Contact, value: string) => {
     const newContacts = [...contacts];
-    if (field === 'phone') {
-      newContacts[index].phone = formatPhone(value);
+    if (field === 'phone1' || field === 'phone2') {
+      newContacts[index] = { ...newContacts[index], [field]: formatPhone(value) };
     } else {
       newContacts[index] = { ...newContacts[index], [field]: value };
     }
     setContacts(newContacts);
   };
 
-  const getWABadge = (status: Contact['waStatus'], phone: string) => {
+  const getWABadge = (status: Contact['waStatus1'], phone: string) => {
     if (config.waMethod === 'manual') {
       const cleanPhone = phone.replace('+', '');
       return (
         <a href={`https://wa.me/${cleanPhone}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 hover:underline font-medium">
           <MessageCircle className="w-4 h-4 text-green-500" />
-          Abrir Chat
+          Chat
         </a>
       );
     }
 
     switch(status) {
-      case 'checking': return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 animate-pulse">⏳ Comprobando...</span>;
-      case 'active': return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">🟢 Activo</span>;
-      case 'inactive': return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">🔴 Inactivo</span>;
-      case 'error': return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">⚠️ Error API</span>;
-      default: return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-400">🔘 Sin verificar</span>;
+      case 'checking': return <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-yellow-100 text-yellow-800 animate-pulse w-full justify-center">⏳ Check</span>;
+      case 'active': return <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800 w-full justify-center">🟢 Activo</span>;
+      case 'inactive': return <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800 w-full justify-center">🔴 Inact.</span>;
+      case 'error': return <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-800 w-full justify-center">⚠️ Err</span>;
+      default: return <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-400 w-full justify-center">🔘 -</span>;
     }
   };
 
@@ -360,14 +367,26 @@ export default function App() {
                         className="w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm font-medium text-gray-900 transition-all duration-150" 
                       />
                     </div>
-                    <div className="md:col-span-2 space-y-1">
-                      <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">Teléfono</label>
-                      <input 
-                        type="text" 
-                        value={c.phone} 
-                        onChange={(e) => updateContact(index, 'phone', e.target.value)} 
-                        className="w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm transition-all duration-150" 
-                      />
+                    <div className="md:col-span-2 space-y-2">
+                      <div>
+                        <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">Teléfono 1</label>
+                        <input 
+                          type="text" 
+                          value={c.phone1} 
+                          onChange={(e) => updateContact(index, 'phone1', e.target.value)} 
+                          className="w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm transition-all duration-150" 
+                        />
+                      </div>
+                      <div className={c.phone2 ? "block" : "hidden md:block"}>
+                        <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">Teléfono 2</label>
+                        <input 
+                          type="text" 
+                          value={c.phone2} 
+                          placeholder="Teléfono 2 (opcional)"
+                          onChange={(e) => updateContact(index, 'phone2', e.target.value)} 
+                          className="w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm transition-all duration-150" 
+                        />
+                      </div>
                     </div>
                     <div className="md:col-span-2 space-y-1">
                       <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">Email</label>
@@ -379,9 +398,17 @@ export default function App() {
                         className="w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm font-mono text-xs transition-all duration-150" 
                       />
                     </div>
-                    <div className="md:col-span-2 flex md:justify-center items-center gap-2">
-                       <span className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-auto">WhatsApp</span>
-                       {getWABadge(c.waStatus, c.phone)}
+                    <div className="md:col-span-2 flex flex-col md:justify-center gap-2">
+                       <div className="flex items-center gap-2">
+                         <span className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-auto">WhatsApp 1</span>
+                         {getWABadge(c.waStatus1, c.phone1)}
+                       </div>
+                       {(c.phone2 || c.waStatus2 !== 'unverified') && (
+                         <div className="flex items-center gap-2">
+                           <span className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-auto">WhatsApp 2</span>
+                           {getWABadge(c.waStatus2, c.phone2)}
+                         </div>
+                       )}
                     </div>
                     <div className="md:col-span-2 flex md:justify-center items-center gap-2 pt-2.5 md:pt-0 border-t md:border-t-0 border-gray-100">
                        <span className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-auto">Guardar</span>
