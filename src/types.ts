@@ -7,6 +7,7 @@ export interface Contact {
   phone1: string;
   phone2: string;
   email: string;
+  activities: string;
   waStatus1: WaStatus;
   waStatus2: WaStatus;
 }
@@ -18,6 +19,7 @@ export interface Mappings {
   mapHotel: number | "";
   mapPax: number | "";
   mapDate: number | "";
+  mapActivities: number | "";
 }
 
 export interface GlobalConfig {

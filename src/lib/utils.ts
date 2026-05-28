@@ -88,7 +88,8 @@ export function computeInitialMappings(headers: string[], rows: string[][]): Map
     mapEmail: ['email', 'e-mail', 'correo', 'mail'],
     mapHotel: ['hotel', 'destino', 'alojamiento', 'hospedaje'],
     mapPax: ['pax', 'pasajeros', 'cantidad', 'personas'],
-    mapDate: ['fecha', 'date', 'llegada', 'check-in', 'checkin']
+    mapDate: ['fecha', 'date', 'llegada', 'check-in', 'checkin'],
+    mapActivities: ['actividad', 'activities', 'tour', 'excursion', 'excursión', 'servicio']
   };
 
   const result: Partial<Mappings> = {};
@@ -146,6 +147,7 @@ export function generateContacts(rawRows: string[][], mappings: Mappings, defaul
     let hotel = mappings.mapHotel !== "" ? row[mappings.mapHotel as number] : "";
     let pax = mappings.mapPax !== "" ? row[mappings.mapPax as number] : "1";
     let date = mappings.mapDate !== "" ? row[mappings.mapDate as number] : defaultDate;
+    let activities = mappings.mapActivities !== "" ? row[mappings.mapActivities as number] : "";
 
     name = name !== undefined && name !== null ? String(name).trim() : "";
     phoneRaw = phoneRaw !== undefined && phoneRaw !== null ? String(phoneRaw).trim() : "";
@@ -153,6 +155,7 @@ export function generateContacts(rawRows: string[][], mappings: Mappings, defaul
     hotel = hotel !== undefined && hotel !== null ? String(hotel).trim() : "";
     pax = pax !== undefined && pax !== null ? String(pax).trim().replace(/\D/g, '') || "1" : "1";
     date = date !== undefined && date !== null ? String(date).trim() : defaultDate;
+    activities = activities !== undefined && activities !== null ? String(activities).trim() : "";
 
     let p1 = "";
     let p2 = "";
@@ -185,6 +188,7 @@ export function generateContacts(rawRows: string[][], mappings: Mappings, defaul
       phone1: cleanPhone1,
       phone2: cleanPhone2,
       email: cleanEmail,
+      activities: activities,
       waStatus1: 'unverified',
       waStatus2: 'unverified'
     });
@@ -220,6 +224,9 @@ export function generateVCFBlob(contacts: Contact[]): Blob {
     }
     if (c.email) {
       vcfContent += `EMAIL;TYPE=INTERNET:${escapedEmail}\r\n`;
+    }
+    if (c.activities) {
+      vcfContent += `NOTE:Actividades: ${escapeVCardValue(c.activities)}\r\n`;
     }
     vcfContent += "END:VCARD\r\n";
   });

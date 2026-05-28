@@ -25,7 +25,7 @@ export default function App() {
   const [filename, setFilename] = useState<string>('');
   
   const [mappings, setMappings] = useState<Mappings>({
-    mapName: "", mapPhone: "", mapEmail: "", mapHotel: "", mapPax: "", mapDate: ""
+    mapName: "", mapPhone: "", mapEmail: "", mapHotel: "", mapPax: "", mapDate: "", mapActivities: ""
   });
   
   const [config, setConfig] = useState<GlobalConfig>({
@@ -165,11 +165,12 @@ export default function App() {
     setContacts(newContacts);
   };
 
-  const getWABadge = (status: Contact['waStatus1'], phone: string) => {
+  const getWABadge = (status: Contact['waStatus1'], phone: string, fullName: string) => {
     if (config.waMethod === 'manual') {
       const cleanPhone = phone.replace('+', '');
+      const text = encodeURIComponent(`Hola ${fullName}`);
       return (
-        <a href={`https://wa.me/${cleanPhone}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 hover:underline font-medium">
+        <a href={`https://wa.me/${cleanPhone}?text=${text}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 hover:underline font-medium">
           <MessageCircle className="w-4 h-4 text-green-500" />
           Chat
         </a>
@@ -234,7 +235,8 @@ export default function App() {
                     { key: 'mapEmail', label: 'Correo Electrónico' },
                     { key: 'mapHotel', label: 'Hotel / Destino' },
                     { key: 'mapPax', label: 'Pasajeros (Pax)' },
-                    { key: 'mapDate', label: 'Fecha de llegada (Opcional)' }
+                    { key: 'mapDate', label: 'Fecha de llegada (Opcional)' },
+                    { key: 'mapActivities', label: 'Actividades / Tours' }
                   ].map((field) => (
                     <div key={field.key}>
                       <label className="block text-xs font-medium text-gray-600 mb-1">{field.label}</label>
@@ -343,11 +345,12 @@ export default function App() {
           
           <div className="border border-gray-200 rounded-xl overflow-hidden">
             <div className="hidden md:grid grid-cols-12 gap-4 bg-gray-50 p-4 text-xs font-semibold uppercase text-gray-700 border-b border-gray-200">
-              <div className="col-span-4">Nombre Completo de Contacto</div>
+              <div className="col-span-3">Nombre Completo de Contacto</div>
               <div className="col-span-2">Teléfono</div>
               <div className="col-span-2">Email</div>
+              <div className="col-span-1">Actividades</div>
               <div className="col-span-2 text-center">WhatsApp</div>
-              <div className="col-span-2 text-center">Guardar</div>
+              <div className="col-span-2 text-center">Exportar Contacto</div>
             </div>
             
             <div className="divide-y divide-gray-200 bg-white">
@@ -358,7 +361,7 @@ export default function App() {
               ) : (
                 contacts.map((c, index) => (
                   <div key={c.id} className="p-4 md:p-3 grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 items-center hover:bg-gray-50 transition animate-in fade-in">
-                    <div className="md:col-span-4 space-y-1">
+                    <div className="md:col-span-3 space-y-1">
                       <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">Nombre Completo</label>
                       <input 
                         type="text" 
@@ -398,29 +401,39 @@ export default function App() {
                         className="w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm font-mono text-xs transition-all duration-150" 
                       />
                     </div>
+                    <div className="md:col-span-1 space-y-1">
+                      <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">Actividades</label>
+                      <input 
+                        type="text" 
+                        value={c.activities} 
+                        placeholder="Sin actividades" 
+                        onChange={(e) => updateContact(index, 'activities', e.target.value)} 
+                        className="w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm transition-all duration-150" 
+                      />
+                    </div>
                     <div className="md:col-span-2 flex flex-col md:justify-center gap-2">
                        <div className="flex items-center gap-2">
                          <span className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-auto">WhatsApp 1</span>
-                         {getWABadge(c.waStatus1, c.phone1)}
+                         {getWABadge(c.waStatus1, c.phone1, c.fullName)}
                        </div>
                        {(c.phone2 || c.waStatus2 !== 'unverified') && (
                          <div className="flex items-center gap-2">
                            <span className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-auto">WhatsApp 2</span>
-                           {getWABadge(c.waStatus2, c.phone2)}
+                           {getWABadge(c.waStatus2, c.phone2, c.fullName)}
                          </div>
                        )}
                     </div>
-                    <div className="md:col-span-2 flex md:justify-center items-center gap-2 pt-2.5 md:pt-0 border-t md:border-t-0 border-gray-100">
-                       <span className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-auto">Guardar</span>
+                    <div className="md:col-span-2 flex flex-col md:items-center justify-center gap-2 pt-2.5 md:pt-0 border-t md:border-t-0 border-gray-100">
+                       <span className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-auto">Exportar Contacto</span>
                        <button 
                           onClick={() => {
                             const blob = generateVCFBlob([c]);
                             const cleanFilename = c.fullName.replace(/[^a-zA-Z0-9]/g, '_');
                             downloadVCF(blob, `${cleanFilename}.vcf`);
                           }} 
-                          className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-semibold hover:underline"
+                          className="w-full justify-center inline-flex items-center gap-1.5 text-[11px] bg-[#128C7E] hover:bg-[#075E54] text-white px-2 py-1.5 rounded font-semibold transition-colors shadow-sm text-center"
                         >
-                          <Download className="w-4 h-4 text-blue-500" /> Guardar
+                          <Download className="w-3.5 h-3.5" /> Guardar contacto de WhatsApp
                        </button>
                     </div>
                   </div>
