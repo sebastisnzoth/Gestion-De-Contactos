@@ -8,6 +8,7 @@ export interface Contact {
   phone2: string;
   email: string;
   activities: string;
+  notes: string;
   waStatus1: WaStatus;
   waStatus2: WaStatus;
   isDuplicate: boolean;

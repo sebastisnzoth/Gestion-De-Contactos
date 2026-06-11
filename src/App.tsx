@@ -10,8 +10,10 @@ import {
   parseCSVText,
   computeInitialMappings,
   generateContacts,
-  generateVCFBlob,
+  generateVCFBlobs,
+  getSharedGroup,
   downloadVCF,
+  escapeVCardValue,
   delay,
   checkWassenger,
   checkWASender,
@@ -151,7 +153,49 @@ export default function App() {
   };
 
   const handleDownloadAll = () => {
-    const blob = generateVCFBlob(contacts);
+    // Collect all contacts, build vCards for each, ensuring shared notes
+    let vcfContent = "";
+    contacts.forEach(c => {
+        const sharedGroup = getSharedGroup(c, contacts);
+        // We only care about the shared note part, we can repurpose generateVCFBlobs part
+        // Actually, let's just make a helper that returns just the vCard string for a group
+    });
+    // This is too complex for now, just iterate and construct it.
+    
+    // Simplest fix: Just use a set of processed contact IDs
+    const processedIds = new Set<string>();
+    let allVcfContent = "";
+
+    contacts.forEach(c => {
+       const sharedGroup = getSharedGroup(c, contacts);
+
+       const note = `=== HISTORIAL COMPARTIDO DEL TELÉFONO ===\n` +
+         sharedGroup.map(item => `• [${new Date().toLocaleDateString('es-ES')}] Contacto: ${item.fullName} - Pasajero: ${item.activities.split(',')[0] || '1'} -> Actividad: ${item.activities || 'Sin actividad'}`).join('\n') +
+         `\n=========================================`;
+
+       sharedGroup.forEach(item => {
+         if (processedIds.has(item.id)) return;
+         processedIds.add(item.id);
+
+         const escapedName = escapeVCardValue(item.fullName);
+         const escapedEmail = escapeVCardValue(item.email);
+
+         allVcfContent += "BEGIN:VCARD\r\n";
+         allVcfContent += "VERSION:3.0\r\n";
+         allVcfContent += `FN;CHARSET=UTF-8:${escapedName}\r\n`;
+         allVcfContent += `N;CHARSET=UTF-8:;${escapedName};;;\r\n`;
+         if (item.phone1) allVcfContent += `TEL;TYPE=CELL:${item.phone1}\r\n`;
+         if (item.phone2) allVcfContent += `TEL;TYPE=CELL:${item.phone2}\r\n`;
+         if (item.email) allVcfContent += `EMAIL;TYPE=INTERNET:${escapedEmail}\r\n`;
+         
+         const encodedNote = note.replace(/\n/g, '\\n');
+         allVcfContent += `NOTE;CHARSET=UTF-8:${encodedNote}\r\n`;
+         
+         allVcfContent += "END:VCARD\r\n";
+       });
+    });
+
+    const blob = new Blob([allVcfContent], { type: 'text/vcard;charset=utf-8;' });
     downloadVCF(blob, 'contactos_viajes_pro.vcf');
   };
 
@@ -430,9 +474,10 @@ export default function App() {
                        <span className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-auto">Exportar Contacto</span>
                        <button 
                           onClick={() => {
-                            const blob = generateVCFBlob([c]);
+                            const sharedGroup = getSharedGroup(c, contacts);
+                            const blob = generateVCFBlobs(sharedGroup);
                             const cleanFilename = c.fullName.replace(/[^a-zA-Z0-9]/g, '_');
-                            downloadVCF(blob, `${cleanFilename}.vcf`);
+                            downloadVCF(blob, `${cleanFilename}_contactos.vcf`);
                           }} 
                           className="w-full justify-center inline-flex items-center gap-1.5 text-[11px] bg-[#128C7E] hover:bg-[#075E54] text-white px-2 py-1.5 rounded font-semibold transition-colors shadow-sm text-center"
                         >

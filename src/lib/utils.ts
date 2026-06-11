@@ -211,6 +211,7 @@ export function generateContacts(rawRows: string[][], mappings: Mappings, defaul
       phone2: cleanPhone2,
       email: cleanEmail,
       activities: activities,
+      notes: "",
       waStatus1: 'unverified',
       waStatus2: 'unverified',
       isDuplicate: false, // will update later
@@ -228,6 +229,13 @@ export function generateContacts(rawRows: string[][], mappings: Mappings, defaul
   return parsedContacts;
 }
 
+export function getSharedGroup(contact: Contact, allContacts: Contact[]): Contact[] {
+  return allContacts.filter(c => 
+    (c.phone1 && (c.phone1 === contact.phone1 || c.phone1 === contact.phone2)) ||
+    (c.phone2 && (c.phone2 === contact.phone1 || c.phone2 === contact.phone2))
+  );
+}
+
 export function escapeVCardValue(val: string): string {
   if (!val) return "";
   return String(val)
@@ -237,9 +245,14 @@ export function escapeVCardValue(val: string): string {
     .replace(/\n/g, '\\n');
 }
 
-export function generateVCFBlob(contacts: Contact[]): Blob {
+export function generateVCFBlobs(sharedGroup: Contact[]): Blob {
   let vcfContent = "";
-  contacts.forEach(c => {
+
+  const note = `=== HISTORIAL COMPARTIDO DEL TELÉFONO ===\n` +
+         sharedGroup.map(c => `• [${new Date().toLocaleDateString('es-ES')}] Contacto: ${c.fullName} - Pasajero: ${c.activities.split(',')[0] || '1'} -> Actividad: ${c.activities || 'Sin actividad'}`).join('\n') +
+         `\n=========================================`;
+
+  sharedGroup.forEach(c => {
     const escapedName = escapeVCardValue(c.fullName);
     const escapedEmail = escapeVCardValue(c.email);
 
@@ -247,22 +260,17 @@ export function generateVCFBlob(contacts: Contact[]): Blob {
     vcfContent += "VERSION:3.0\r\n";
     vcfContent += `FN;CHARSET=UTF-8:${escapedName}\r\n`;
     vcfContent += `N;CHARSET=UTF-8:;${escapedName};;;\r\n`;
-    if (c.phone1) {
-      vcfContent += `TEL;TYPE=CELL:${c.phone1}\r\n`;
-    }
-    if (c.phone2) {
-      vcfContent += `TEL;TYPE=CELL:${c.phone2}\r\n`;
-    }
-    if (c.email) {
-      vcfContent += `EMAIL;TYPE=INTERNET:${escapedEmail}\r\n`;
-    }
-    if (c.activities) {
-      vcfContent += `NOTE:Actividades: ${escapeVCardValue(c.activities)}\r\n`;
-    }
+    if (c.phone1) vcfContent += `TEL;TYPE=CELL:${c.phone1}\r\n`;
+    if (c.phone2) vcfContent += `TEL;TYPE=CELL:${c.phone2}\r\n`;
+    if (c.email) vcfContent += `EMAIL;TYPE=INTERNET:${escapedEmail}\r\n`;
+    
+    // Using multiline encoding according to vCard 3.0 spec (space at start of line)
+    const encodedNote = note.replace(/\n/g, '\\n');
+    vcfContent += `NOTE;CHARSET=UTF-8:${encodedNote}\r\n`;
+    
     vcfContent += "END:VCARD\r\n";
   });
 
-  // Generar Blob sin BOM para compatibilidad iOS
   return new Blob([vcfContent], { type: 'text/vcard;charset=utf-8;' });
 }
 
