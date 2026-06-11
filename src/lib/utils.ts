@@ -142,6 +142,7 @@ export function generateContacts(rawRows: string[][], mappings: Mappings, defaul
   if (rawRows.length < 2) return [];
 
   const parsedContacts: Contact[] = [];
+  const phoneCounts = new Map<string, number>();
 
   for (let i = 1; i < rawRows.length; i++) {
     const row = rawRows[i];
@@ -200,6 +201,9 @@ export function generateContacts(rawRows: string[][], mappings: Mappings, defaul
     const cleanPhone2 = p2 ? formatPhone(p2) : "";
     const cleanEmail = (email && email.toLowerCase() !== '(no especificado)' && email !== 'n/a') ? email : "";
 
+    if (cleanPhone1) phoneCounts.set(cleanPhone1, (phoneCounts.get(cleanPhone1) || 0) + 1);
+    if (cleanPhone2) phoneCounts.set(cleanPhone2, (phoneCounts.get(cleanPhone2) || 0) + 1);
+
     parsedContacts.push({
       id: crypto.randomUUID(),
       fullName: finalName,
@@ -208,9 +212,18 @@ export function generateContacts(rawRows: string[][], mappings: Mappings, defaul
       email: cleanEmail,
       activities: activities,
       waStatus1: 'unverified',
-      waStatus2: 'unverified'
+      waStatus2: 'unverified',
+      isDuplicate: false, // will update later
     });
   }
+
+  // Second pass to identify duplicates
+  parsedContacts.forEach(contact => {
+    const isDup = 
+        (contact.phone1 && (phoneCounts.get(contact.phone1) || 0) > 1) ||
+        (contact.phone2 && (phoneCounts.get(contact.phone2) || 0) > 1);
+    contact.isDuplicate = isDup;
+  });
 
   return parsedContacts;
 }

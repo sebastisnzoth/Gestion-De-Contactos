@@ -363,12 +363,15 @@ export default function App() {
                   <div key={c.id} className="p-4 md:p-3 grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 items-center hover:bg-gray-50 transition animate-in fade-in">
                     <div className="md:col-span-3 space-y-1">
                       <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">Nombre Completo</label>
-                      <input 
-                        type="text" 
-                        value={c.fullName} 
-                        onChange={(e) => updateContact(index, 'fullName', e.target.value)} 
-                        className="w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm font-medium text-gray-900 transition-all duration-150" 
-                      />
+                      <div className="flex items-center gap-2">
+                        {c.isDuplicate && <span title="Teléfono duplicado"><AlertCircle className="w-4 h-4 text-red-500" /></span>}
+                        <input 
+                          type="text" 
+                          value={c.fullName} 
+                          onChange={(e) => updateContact(index, 'fullName', e.target.value)} 
+                          className={`w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm font-medium ${c.isDuplicate ? 'text-red-700' : 'text-gray-900'} transition-all duration-150`}
+                        />
+                      </div>
                     </div>
                     <div className="md:col-span-2 space-y-2">
                       <div>

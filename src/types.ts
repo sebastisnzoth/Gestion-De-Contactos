@@ -10,6 +10,7 @@ export interface Contact {
   activities: string;
   waStatus1: WaStatus;
   waStatus2: WaStatus;
+  isDuplicate: boolean;
 }
 
 export interface Mappings {
