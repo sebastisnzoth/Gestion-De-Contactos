@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, AlertCircle, FileSpreadsheet, CheckCircle2, XCircle, MessageCircle } from 'lucide-react';
+import { Download, AlertCircle, FileSpreadsheet, CheckCircle2, XCircle, MessageCircle, Eye } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
   parseCSVText,
@@ -12,8 +12,11 @@ import {
   generateContacts,
   generateVCFBlobs,
   getSharedGroup,
+  generateICSBlob,
+  generateICSString,
   downloadVCF,
   escapeVCardValue,
+  parseDate,
   delay,
   checkWassenger,
   checkWASender,
@@ -38,6 +41,7 @@ export default function App() {
   
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   useEffect(() => {
     if (rawRows.length > 1) {
@@ -230,6 +234,347 @@ export default function App() {
     }
   };
 
+  const Calendar72h = ({ contacts }: { contacts: Contact[] }) => {
+    const now = new Date();
+    const seventyTwoHoursLater = new Date(now.getTime() + 72 * 60 * 60 * 1000);
+
+    const activities = contacts.flatMap(c => {
+      const activityParts = c.activities.split(',').map(a => a.trim()).filter(a => a);
+      const date = parseDate(c.fullName.split(' ')[0]);
+      if (!date) return [];
+      
+      return activityParts.map(act => ({
+        ...c,
+        activity: act,
+        date
+      }));
+    }).filter(item => item.date >= now && item.date <= seventyTwoHoursLater);
+
+    if (activities.length === 0) return null;
+
+    return <div className="bg-white rounded-xl shadow-sm p-4 md:p-6 border border-gray-200 mt-6">
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">Próximos 3 días (72h)</h2>
+      <div className="space-y-4">
+        {activities.map((a, i) => (
+          <div key={i} className="flex gap-4 p-3 bg-blue-50/50 rounded-lg border border-blue-100">
+             <div className="text-xs font-bold text-blue-700 min-w-[70px]">{a.date.toLocaleDateString()}</div>
+             <div className="text-sm text-gray-800 flex-1">{a.activity}</div>
+             <div className="text-sm font-semibold text-gray-900 truncate max-w-[150px]">{a.fullName.split(' ').slice(2).join(' ')}</div>
+          </div>
+        ))}
+      </div>
+    </div>;
+  };
+
+  const [activeTab, setActiveTab] = useState<'contacts' | 'report'>('contacts');
+  const [reportSearch, setReportSearch] = useState('');
+
+  const EventReportTab = ({ contacts }: { contacts: Contact[] }) => {
+    // Flat activities
+    const allEvents = contacts.flatMap(c => {
+      const activityParts = c.activities.split(',').map(a => a.trim()).filter(a => a);
+      const date = parseDate(c.fullName.split(' ')[0]);
+      const dateStrForGroup = c.fullName.split(' ')[0] || 'Sin fecha';
+      
+      const rawNameParts = c.fullName.split(' ');
+      const rawPaxVal = c.pax || '1';
+      const cleanName = rawNameParts.slice(2).join(' ').split(' - en ')[0] || c.fullName;
+      const hotelName = c.fullName.includes(' - en ') ? c.fullName.split(' - en ')[1] : '';
+
+      if (activityParts.length === 0) {
+        return [{
+          id: `${c.id}-none`,
+          contact: c,
+          activity: 'Sin actividad asignada',
+          date: date,
+          dateStr: dateStrForGroup,
+          cleanName,
+          hotelName,
+          pax: rawPaxVal
+        }];
+      }
+
+      return activityParts.map((act, i) => ({
+        id: `${c.id}-${i}`,
+        contact: c,
+        activity: act,
+        date: date,
+        dateStr: dateStrForGroup,
+        cleanName,
+        hotelName,
+        pax: rawPaxVal
+      }));
+    });
+
+    // Filter by search
+    const filteredEvents = allEvents.filter(ev => {
+      const query = reportSearch.toLowerCase().trim();
+      if (!query) return true;
+      return ev.activity.toLowerCase().includes(query) || 
+             ev.cleanName.toLowerCase().includes(query) || 
+             ev.hotelName.toLowerCase().includes(query) ||
+             ev.contact.phone1.includes(query) ||
+             ev.contact.phone2.includes(query);
+    });
+
+    // Grouping by dateStr
+    const groups: { [dateStr: string]: typeof filteredEvents } = {};
+    filteredEvents.forEach(ev => {
+      const key = ev.dateStr;
+      if (!groups[key]) {
+        groups[key] = [];
+      }
+      groups[key].push(ev);
+    });
+
+    // Sort dates
+    const sortedDateKeys = Object.keys(groups).sort((a, b) => {
+      const dateA = parseDate(a);
+      const dateB = parseDate(b);
+      if (!dateA) return 1;
+      if (!dateB) return -1;
+      return dateA.getTime() - dateB.getTime();
+    });
+
+    if (contacts.length === 0) {
+      return (
+        <div className="p-8 text-center text-gray-400 text-sm">
+          Ningún contacto cargado para generar el reporte. Sube un archivo en el Paso 1.
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-100">
+          <div className="text-left">
+            <h3 className="text-sm font-semibold text-gray-900">Resumen del Reporte de Actividades</h3>
+            <p className="text-xs text-gray-500">Total de actividades/eventos: <span className="font-bold text-gray-800">{filteredEvents.length}</span> (Filtrados de {allEvents.length} en total)</p>
+          </div>
+          <div className="w-full sm:w-72">
+            <input 
+              type="text"
+              placeholder="🔍 Buscar por actividad, titular, hotel..."
+              value={reportSearch}
+              onChange={(e) => setReportSearch(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        {filteredEvents.length === 0 ? (
+          <div className="p-8 text-center text-gray-400 text-sm">
+            No se encontraron eventos para el filtro "{reportSearch}".
+          </div>
+        ) : (
+          <div className="space-y-6 max-h-[600px] overflow-y-auto pr-1">
+            {sortedDateKeys.map(dateKey => {
+              const items = groups[dateKey];
+              const parsed = parseDate(dateKey);
+              const formattedHeader = parsed 
+                ? parsed.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+                : `Fecha: ${dateKey}`;
+
+              return (
+                <div key={dateKey} className="space-y-2 border-b border-gray-100 pb-4 last:border-0 last:pb-0">
+                  <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider sticky top-0 bg-white py-1 z-10">{formattedHeader}</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {items.map(ev => {
+                      const phone = ev.contact.phone1 || ev.contact.phone2 || '';
+                      const phoneClean = phone.replace(/\D/g, '');
+                      const text = encodeURIComponent(`Hola ${ev.cleanName}, te escribimos de la agencia para verificar tu actividad "${ev.activity}" programada para el día ${ev.dateStr}.`);
+                      
+                      return (
+                        <div key={ev.id} className="p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 transition shadow-sm flex flex-col justify-between h-full">
+                          <div>
+                            <div className="flex justify-between items-start gap-2 mb-2">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-800">
+                                {ev.activity}
+                              </span>
+                              {ev.pax && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600">
+                                  👥 {ev.pax} pax
+                                </span>
+                              )}
+                            </div>
+                            
+                            <h5 className="font-semibold text-sm text-gray-900 mb-1">{ev.cleanName}</h5>
+                            {ev.hotelName && (
+                              <p className="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                                🏨 {ev.hotelName}
+                              </p>
+                            )}
+                            {phone && (
+                              <p className="text-xs text-gray-600 font-mono mb-2">
+                                📞 {phone}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
+                            {phone && (
+                              <a 
+                                href={`https://wa.me/${phoneClean}?text=${text}`} 
+                                target="_blank" 
+                                rel="noreferrer" 
+                                className="inline-flex items-center gap-1 text-xs bg-green-50 hover:bg-green-100 text-green-700 font-medium px-2.5 py-1 rounded-lg border border-green-200 transition"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5 text-green-600" />
+                                Mensaje WA
+                              </a>
+                            )}
+                            <button
+                              onClick={() => {
+                                const singleSharedGroup = getSharedGroup(ev.contact, contacts);
+                                const singleBlob = generateVCFBlobs(singleSharedGroup);
+                                const cleanFn = ev.cleanName.replace(/[^a-zA-Z0-9]/g, '_');
+                                downloadVCF(singleBlob, `${cleanFn}_contacto.vcf`);
+                              }}
+                              className="inline-flex items-center gap-1 text-xs text-blue-700 hover:text-blue-800 font-medium"
+                            >
+                              Descargar VCF
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const [isReportOpen, setIsReportOpen] = useState(false);
+
+  const ReportOverlay = ({ contacts }: { contacts: Contact[] }) => {
+    if (!isReportOpen) return null;
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/80 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden border border-gray-100">
+          <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="text-xl font-bold text-gray-900">Reporte Completo de Eventos</h2>
+            <button onClick={() => setIsReportOpen(false)} className="text-gray-400 hover:text-gray-600 font-semibold p-2">✕</button>
+          </div>
+          <div className="p-6 overflow-y-auto">
+             {/* Report content (same as Calendar72h but for ALL items) */}
+             <div className="space-y-4">
+                {contacts.flatMap(c => {
+                  const activityParts = c.activities.split(',').map(a => a.trim()).filter(a => a);
+                  const date = parseDate(c.fullName.split(' ')[0]);
+                  return activityParts.map((act, i) => ({
+                    ...c,
+                    activity: act,
+                    date: date || new Date(0),
+                    id: `${c.id}-${i}`
+                  }));
+                }).sort((a,b) => a.date.getTime() - b.date.getTime()).map((a, i) => (
+                  <div key={i} className="flex gap-4 p-4 bg-white rounded-lg border border-gray-100 shadow-sm hover:border-blue-200 transition">
+                     <div className="text-sm font-bold text-blue-700 min-w-[100px]">{a.date.getTime() === 0 ? 'N/A' : a.date.toLocaleDateString()}</div>
+                     <div className="text-sm text-gray-800 flex-1">{a.activity}</div>
+                     <div className="text-sm font-semibold text-gray-900 truncate max-w-[250px]">{a.fullName.split(' ').slice(2).join(' ')}</div>
+                  </div>
+                ))}
+             </div>
+           </div>
+         </div>
+       </div>
+     );
+   };
+
+   const CalendarPreviewModal = () => {
+     const [copied, setCopied] = useState(false);
+     
+     if (!isPreviewOpen) return null;
+
+     const rawICS = contacts.length > 0 ? generateICSString(contacts) : "";
+
+     const handleCopy = () => {
+       navigator.clipboard.writeText(rawICS);
+       setCopied(true);
+       setTimeout(() => setCopied(false), 2000);
+     };
+
+     return (
+       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/80 backdrop-blur-sm animate-in fade-in duration-200">
+         <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border border-gray-100 animate-in zoom-in-95 duration-150">
+           <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+             <div>
+               <h2 className="text-lg font-bold text-gray-950 flex items-center gap-2">
+                 <span className="bg-orange-100 text-orange-850 text-xs font-bold px-2.5 py-0.5 rounded-full">ICS</span>
+                 Vista Previa de Calendario (.ics)
+               </h2>
+               <p className="text-xs text-gray-500 mt-0.5">Código de bloques VEVENT que se integrarán en tu archivo de calendario</p>
+             </div>
+             <button onClick={() => setIsPreviewOpen(false)} className="text-gray-400 hover:text-gray-650 font-semibold p-2 rounded-lg hover:bg-gray-100 transition-colors">✕</button>
+           </div>
+           
+           <div className="p-6 overflow-hidden bg-gray-950 flex-1 flex flex-col min-h-0">
+             <div>
+                             </div>{/* Bloque Informativo */}
+              <div className="mb-4 p-3.5 bg-teal-950/40 border border-teal-900/30 rounded-xl flex items-start gap-2.5 text-xs text-teal-200">
+                <AlertCircle className="w-4 h-4 text-teal-400 shrink-0 mt-0.5" />
+                <div className="leading-normal text-left">
+                  <strong className="text-white font-semibold">💡 Sincronización Inteligente de Eventos (Evita Duplicados):</strong>{" "}
+                  Cada evento cuenta con un identificador único regulado (<code className="bg-teal-900/50 px-1 py-0.5 rounded text-teal-300 font-mono">UID</code>) determinista. Al importar este archivo en Google Calendar, Outlook o Apple Calendar, si un evento ya existe, la plataforma <span className="font-semibold text-white underline decoration-teal-400">no lo duplicará</span>, sino que <span className="font-semibold text-white">reemplazará y fusionará (merge)</span> la información actual con los nuevos cambios si hay diferencias registradas.
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between mb-3 text-xs text-gray-400 font-mono border-b border-gray-900 pb-2">
+                <span>FORMATO DE EVENTOS GENERADOS (RFC 5545)</span>
+                <button 
+                  onClick={handleCopy}
+                  className="bg-gray-850 hover:bg-gray-800 text-white font-medium px-3 py-1 rounded transition-colors flex items-center gap-1.5 text-xs font-sans"
+                >
+                  {copied ? "¡Copiado!" : "Copiar archivo completo"}
+                </button>
+              </div>
+              <div className="mb-4 p-3.5 bg-teal-950/40 border border-teal-900/30 rounded-xl flex items-start gap-2.5 text-xs text-teal-200">
+
+                <div className="leading-normal text-left">
+                  
+                  
+                </div>
+               <button 
+                 onClick={handleCopy}
+                 className="hidden"
+               >
+                 {copied ? "¡Copiado!" : "Copiar archivo completo"}
+               </button>
+             </div>
+             <div className="flex-1 overflow-auto bg-gray-900 p-4 rounded-lg border border-gray-800 font-mono text-xs text-orange-400 leading-relaxed text-left select-all whitespace-pre-wrap">
+               {rawICS || "Ningún evento cargado para previsualizar."}
+             </div>
+           </div>
+
+           <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+             <button
+               onClick={() => setIsPreviewOpen(false)}
+               className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-105 font-medium text-sm transition"
+             >
+               Cerrar
+            </button>
+             <button
+               onClick={() => {
+                 const blob = generateICSBlob(contacts);
+                 downloadVCF(blob, 'calendario_eventos.ics');
+                 setIsPreviewOpen(false);
+               }}
+               className="px-4 py-2 bg-orange-600 hover:bg-orange-750 text-white font-semibold rounded-lg text-sm transition flex items-center gap-1.5 shadow-sm"
+             >
+               <Download className="w-4 h-4" />
+               Descargar .ics
+             </button>
+           </div>
+         </div>
+       </div>
+     );
+   };
+
   return (
     <div className="bg-gray-50 min-h-screen text-gray-800 font-sans">
       <div className="max-w-7xl mx-auto px-4 py-4 md:py-8">
@@ -298,6 +643,24 @@ export default function App() {
               </div>
             )}
             
+            <Calendar72h contacts={contacts} />
+            
+            {contacts.length > 0 && (
+                <button
+                  onClick={() => {
+                    setActiveTab('report');
+                    setTimeout(() => {
+                      document.getElementById('data-section')?.scrollIntoView({ behavior: 'smooth' });
+                    }, 100);
+                  }}
+                  className="w-full mt-4 bg-gray-800 hover:bg-gray-900 text-white font-semibold py-2.5 px-4 rounded-lg transition text-sm flex items-center justify-center gap-2"
+                >
+                  Ver Reporte de Eventos (Nueva Solapa)
+                </button>
+            )}
+            
+            <ReportOverlay contacts={contacts} />
+            <CalendarPreviewModal />
           </div>
 
           <div className="space-y-6">
@@ -375,120 +738,176 @@ export default function App() {
                 className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 px-4 rounded-lg transition text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 <Download className="w-4 h-4" />
-                Guardar todos
+                Guardar contactos (.vcf)
               </button>
+              <div className="flex gap-2 mt-2">
+                <button 
+                  onClick={() => {
+                     const blob = generateICSBlob(contacts);
+                     downloadVCF(blob, 'calendario_eventos.ics');
+                  }}
+                  disabled={contacts.length === 0} 
+                  className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2.5 px-4 rounded-lg transition text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Calendario (.ics)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPreviewOpen(true)}
+                  disabled={contacts.length === 0}
+                  className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2.5 px-4 rounded-lg transition text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 border border-gray-300"
+                  title="Vista Previa de Calendario"
+                >
+                  <Eye className="w-4 h-4" />
+                  Previsualizar
+                </button>
+              </div>
+
+              {contacts.length > 0 && (
+                <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg text-[11px] text-orange-850 leading-normal flex items-start gap-1.5 animate-in fade-in text-left">
+                  <AlertCircle className="w-3.5 h-3.5 text-orange-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold text-orange-950 block mb-0.5">⚠️ Control de Duplicados en Calendario</span>
+                    Al importar el archivo, Google Calendar u Outlook usarán el identificador regulado (<code className="bg-orange-100 px-1 py-0.5 rounded font-mono text-orange-900 text-[10px]">UID</code>) estable de cada cliente. Si subes información con modificaciones, la plataforma <span className="underline decoration-orange-400 font-semibold text-orange-950">no lo duplicará</span>, sino que actualizará y fusionará (<span className="font-semibold text-orange-950 text-[11px]">merge</span>) los cambios directamente sobre el mismo evento.
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm p-4 md:p-6 mt-6 border border-gray-200">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">3. Revisar, Editar y Guardar Contactos</h2>
-            <span className="text-xs text-gray-500">Puedes modificar directamente los campos en la lista</span>
-          </div>
-          
-          <div className="border border-gray-200 rounded-xl overflow-hidden">
-            <div className="hidden md:grid grid-cols-12 gap-4 bg-gray-50 p-4 text-xs font-semibold uppercase text-gray-700 border-b border-gray-200">
-              <div className="col-span-3">Nombre Completo de Contacto</div>
-              <div className="col-span-2">Teléfono</div>
-              <div className="col-span-2">Email</div>
-              <div className="col-span-1">Actividades</div>
-              <div className="col-span-2 text-center">WhatsApp</div>
-              <div className="col-span-2 text-center">Exportar Contacto</div>
+        <div id="data-section" className="bg-white rounded-xl shadow-sm p-4 md:p-6 mt-6 border border-gray-200 animate-in fade-in duration-300">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4 mb-6">
+            <div>
+              <h2 className="text-xl font-bold text-gray-950">3. Tablero de Gestión</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Control de contactos cargados y reporte cronológico de eventos</p>
             </div>
             
-            <div className="divide-y divide-gray-200 bg-white">
-              {contacts.length === 0 ? (
-                <div className="p-8 text-center text-gray-400 text-sm">
-                  {rawRows.length > 0 ? "Verifica que las columnas de Nombre y Teléfono estén asignadas correctamente." : "Ningún archivo cargado."}
-                </div>
-              ) : (
-                contacts.map((c, index) => (
-                  <div key={c.id} className="p-4 md:p-3 grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 items-center hover:bg-gray-50 transition animate-in fade-in">
-                    <div className="md:col-span-3 space-y-1">
-                      <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">Nombre Completo</label>
-                      <div className="flex items-center gap-2">
-                        {c.isDuplicate && <span title="Teléfono duplicado"><AlertCircle className="w-4 h-4 text-red-500" /></span>}
-                        <input 
-                          type="text" 
-                          value={c.fullName} 
-                          onChange={(e) => updateContact(index, 'fullName', e.target.value)} 
-                          className={`w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm font-medium ${c.isDuplicate ? 'text-red-700' : 'text-gray-900'} transition-all duration-150`}
-                        />
-                      </div>
-                    </div>
-                    <div className="md:col-span-2 space-y-2">
-                      <div>
-                        <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">Teléfono 1</label>
-                        <input 
-                          type="text" 
-                          value={c.phone1} 
-                          onChange={(e) => updateContact(index, 'phone1', e.target.value)} 
-                          className="w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm transition-all duration-150" 
-                        />
-                      </div>
-                      <div className={c.phone2 ? "block" : "hidden md:block"}>
-                        <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">Teléfono 2</label>
-                        <input 
-                          type="text" 
-                          value={c.phone2} 
-                          placeholder="Teléfono 2 (opcional)"
-                          onChange={(e) => updateContact(index, 'phone2', e.target.value)} 
-                          className="w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm transition-all duration-150" 
-                        />
-                      </div>
-                    </div>
-                    <div className="md:col-span-2 space-y-1">
-                      <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">Email</label>
-                      <input 
-                        type="text" 
-                        value={c.email} 
-                        placeholder="Sin email" 
-                        onChange={(e) => updateContact(index, 'email', e.target.value)} 
-                        className="w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm font-mono text-xs transition-all duration-150" 
-                      />
-                    </div>
-                    <div className="md:col-span-1 space-y-1">
-                      <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">Actividades</label>
-                      <input 
-                        type="text" 
-                        value={c.activities} 
-                        placeholder="Sin actividades" 
-                        onChange={(e) => updateContact(index, 'activities', e.target.value)} 
-                        className="w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm transition-all duration-150" 
-                      />
-                    </div>
-                    <div className="md:col-span-2 flex flex-col md:justify-center gap-2">
-                       <div className="flex items-center gap-2">
-                         <span className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-auto">WhatsApp 1</span>
-                         {getWABadge(c.waStatus1, c.phone1, c.fullName)}
-                       </div>
-                       {(c.phone2 || c.waStatus2 !== 'unverified') && (
-                         <div className="flex items-center gap-2">
-                           <span className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-auto">WhatsApp 2</span>
-                           {getWABadge(c.waStatus2, c.phone2, c.fullName)}
-                         </div>
-                       )}
-                    </div>
-                    <div className="md:col-span-2 flex flex-col md:items-center justify-center gap-2 pt-2.5 md:pt-0 border-t md:border-t-0 border-gray-100">
-                       <span className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-auto">Exportar Contacto</span>
-                       <button 
-                          onClick={() => {
-                            const sharedGroup = getSharedGroup(c, contacts);
-                            const blob = generateVCFBlobs(sharedGroup);
-                            const cleanFilename = c.fullName.replace(/[^a-zA-Z0-9]/g, '_');
-                            downloadVCF(blob, `${cleanFilename}_contactos.vcf`);
-                          }} 
-                          className="w-full justify-center inline-flex items-center gap-1.5 text-[11px] bg-[#128C7E] hover:bg-[#075E54] text-white px-2 py-1.5 rounded font-semibold transition-colors shadow-sm text-center"
-                        >
-                          <Download className="w-3.5 h-3.5" /> Guardar contacto de WhatsApp
-                       </button>
-                    </div>
-                  </div>
-                ))
-              )}
+            <div className="flex bg-gray-100 p-1 rounded-xl">
+              <button
+                onClick={() => setActiveTab('contacts')}
+                className={`px-4 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all duration-150 ${activeTab === 'contacts' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+              >
+                📇 Lista de Contactos
+              </button>
+              <button
+                onClick={() => setActiveTab('report')}
+                className={`px-4 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all duration-150 ${activeTab === 'report' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+              >
+                📅 Reporte de Eventos
+              </button>
             </div>
           </div>
+          
+          {activeTab === 'contacts' ? (
+            <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm bg-white">
+              <div className="hidden md:grid grid-cols-12 gap-4 bg-gray-50 p-4 text-xs font-semibold uppercase text-gray-700 border-b border-gray-200">
+                <div className="col-span-3">Nombre Completo de Contacto</div>
+                <div className="col-span-2">Teléfono</div>
+                <div className="col-span-2">Email</div>
+                <div className="col-span-1">Actividades</div>
+                <div className="col-span-2 text-center">WhatsApp</div>
+                <div className="col-span-2 text-center">Exportar Contacto</div>
+              </div>
+              
+              <div className="divide-y divide-gray-200 bg-white">
+                {contacts.length === 0 ? (
+                  <div className="p-8 text-center text-gray-400 text-sm">
+                    {rawRows.length > 0 ? "Verifica que las columnas de Nombre y Teléfono estén asignadas correctamente." : "Ningún archivo cargado."}
+                  </div>
+                ) : (
+                  contacts.map((c, index) => (
+                    <div key={c.id} className="p-4 md:p-3 grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 items-center hover:bg-gray-50 transition animate-in fade-in">
+                      <div className="md:col-span-3 space-y-1">
+                        <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">Nombre Completo</label>
+                        <div className="flex items-center gap-2">
+                          {c.isDuplicate && <span title="Teléfono duplicado"><AlertCircle className="w-4 h-4 text-red-500" /></span>}
+                          <input 
+                            type="text" 
+                            value={c.fullName} 
+                            onChange={(e) => updateContact(index, 'fullName', e.target.value)} 
+                            className={`w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm font-medium ${c.isDuplicate ? 'text-red-700' : 'text-gray-900'} transition-all duration-150`}
+                          />
+                        </div>
+                      </div>
+                      <div className="md:col-span-2 space-y-2">
+                        <div>
+                          <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">Teléfono 1</label>
+                          <input 
+                            type="text" 
+                            value={c.phone1} 
+                            onChange={(e) => updateContact(index, 'phone1', e.target.value)} 
+                            className="w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm transition-all duration-150" 
+                          />
+                        </div>
+                        <div className={c.phone2 ? "block" : "hidden md:block"}>
+                          <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">Teléfono 2</label>
+                          <input 
+                            type="text" 
+                            value={c.phone2} 
+                            placeholder="Teléfono 2 (opcional)"
+                            onChange={(e) => updateContact(index, 'phone2', e.target.value)} 
+                            className="w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm transition-all duration-150" 
+                          />
+                        </div>
+                      </div>
+                      <div className="md:col-span-2 space-y-1">
+                        <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">Email</label>
+                        <input 
+                          type="text" 
+                          value={c.email} 
+                          placeholder="Sin email" 
+                          onChange={(e) => updateContact(index, 'email', e.target.value)} 
+                          className="w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm font-mono text-xs transition-all duration-150" 
+                        />
+                      </div>
+                      <div className="md:col-span-1 space-y-1">
+                        <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">Actividades</label>
+                        <input 
+                          type="text" 
+                          value={c.activities} 
+                          placeholder="Sin actividades" 
+                          onChange={(e) => updateContact(index, 'activities', e.target.value)} 
+                          className="w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm transition-all duration-150" 
+                        />
+                      </div>
+                      <div className="md:col-span-2 flex flex-col md:justify-center gap-2">
+                         <div className="flex items-center gap-2">
+                           <span className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-auto">WhatsApp 1</span>
+                           {getWABadge(c.waStatus1, c.phone1, c.fullName)}
+                         </div>
+                         {(c.phone2 || c.waStatus2 !== 'unverified') && (
+                           <div className="flex items-center gap-2">
+                             <span className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-auto">WhatsApp 2</span>
+                             {getWABadge(c.waStatus2, c.phone2, c.fullName)}
+                           </div>
+                         )}
+                      </div>
+                      <div className="md:col-span-2 flex flex-col md:items-center justify-center gap-2 pt-2.5 md:pt-0 border-t md:border-t-0 border-gray-100">
+                         <span className="block md:hidden text-[10px] font-bold text-gray-450 uppercase tracking-wider mr-auto">Exportar Contacto</span>
+                         <button 
+                            onClick={() => {
+                              const sharedGroup = getSharedGroup(c, contacts);
+                              const blob = generateVCFBlobs(sharedGroup);
+                              const cleanFilename = c.fullName.replace(/[^a-zA-Z0-9]/g, '_');
+                              downloadVCF(blob, `${cleanFilename}_contactos.vcf`);
+                            }} 
+                            className="w-full justify-center inline-flex items-center gap-1.5 text-[11px] bg-[#128C7E] hover:bg-[#075E54] text-white px-2 py-1.5 rounded font-semibold transition-colors shadow-sm text-center"
+                          >
+                            <Download className="w-3.5 h-3.5" /> Guardar contacto de WhatsApp
+                         </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl p-2 animate-in fade-in duration-200">
+              <EventReportTab contacts={contacts} />
+            </div>
+          )}
         </div>
         
       </div>

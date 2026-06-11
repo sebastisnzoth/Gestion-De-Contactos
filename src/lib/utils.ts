@@ -88,8 +88,8 @@ export function computeInitialMappings(headers: string[], rows: string[][]): Map
     mapEmail: ['email', 'e-mail', 'correo', 'mail'],
     mapHotel: ['hotel', 'destino', 'alojamiento', 'hospedaje'],
     mapPax: ['pax', 'pasajeros', 'cantidad', 'personas'],
-    mapDate: ['fecha', 'date', 'llegada', 'check-in', 'checkin'],
-    mapActivities: ['actividad', 'activities', 'tour', 'excursion', 'excursión', 'servicio']
+    mapDate: ['fecha', 'date', 'llegada', 'check-in', 'checkin', 'conciliación', 'conciliacion'],
+    mapActivities: ['actividad', 'activities', 'tour', 'excursion', 'excursión', 'servicio', 'modalidad']
   };
 
   const result: Partial<Mappings> = {};
@@ -138,11 +138,53 @@ export function formatPhone(phone: string): string {
   return digits;
 }
 
+export function extractActivityAndDate(inputStr: string, defaultDt: string): { activity: string; date: string } {
+  const trimmed = String(inputStr || '').trim();
+  if (!trimmed) {
+    return { activity: '', date: defaultDt };
+  }
+
+  const startsWithComp = trimmed.toLowerCase().startsWith('comp');
+
+  // ALGORITMO DE SEPARACIÓN CRÍTICO
+  const match = trimmed.match(/(.*?)(?:[a-zA-Z]+)?(\d{1,2}\/\d{1,2}\/\d{2,4})\s*$/);
+  if (match) {
+    let activity = match[1].trim();
+    const cleanDate = match[2].trim();
+
+    // Si empieza con 'comp', queremos mantener el formato del nombre de la actividad empezando con 'comp'
+    if (startsWithComp) {
+      const dateMatch = trimmed.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})\s*$/);
+      if (dateMatch) {
+         const datePart = dateMatch[1];
+         let rawActivity = trimmed.substring(0, trimmed.length - datePart.length).trim();
+         // Límpialo de corchetes, paréntesis o signos residuales pero manteniendo 'comp' intacto
+         rawActivity = rawActivity
+           .replace(/^[-+*\s[({]+/, '')
+           .replace(/[-+*\s\])}]+$/, '')
+           .trim();
+         return { activity: rawActivity, date: datePart };
+      }
+    }
+
+    // Límpialo de corchetes, paréntesis o textos genéricos redundantes
+    activity = activity
+      .replace(/^[-+*\s[({]+/, '')
+      .replace(/[-+*\s\])}]+$/, '')
+      .trim();
+
+    return { activity, date: cleanDate };
+  }
+
+  return { activity: trimmed, date: defaultDt };
+}
+
 export function generateContacts(rawRows: string[][], mappings: Mappings, defaultDate: string): Contact[] {
   if (rawRows.length < 2) return [];
 
   const parsedContacts: Contact[] = [];
   const phoneCounts = new Map<string, number>();
+  const usedIds = new Set<string>();
 
   for (let i = 1; i < rawRows.length; i++) {
     const row = rawRows[i];
@@ -153,7 +195,7 @@ export function generateContacts(rawRows: string[][], mappings: Mappings, defaul
     let email = mappings.mapEmail !== "" ? row[mappings.mapEmail as number] : "";
     let hotel = mappings.mapHotel !== "" ? row[mappings.mapHotel as number] : "";
     let pax = mappings.mapPax !== "" ? row[mappings.mapPax as number] : "1";
-    let date = mappings.mapDate !== "" ? row[mappings.mapDate as number] : defaultDate;
+    let date = mappings.mapDate !== "" ? row[mappings.mapDate as number] : "";
     let activities = mappings.mapActivities !== "" ? row[mappings.mapActivities as number] : "";
 
     name = name !== undefined && name !== null ? String(name).trim() : "";
@@ -161,8 +203,35 @@ export function generateContacts(rawRows: string[][], mappings: Mappings, defaul
     email = email !== undefined && email !== null ? String(email).trim() : "";
     hotel = hotel !== undefined && hotel !== null ? String(hotel).trim() : "";
     pax = pax !== undefined && pax !== null ? String(pax).trim().replace(/\D/g, '') || "1" : "1";
-    let dateStr = date !== undefined && date !== null ? String(date).trim() : defaultDate;
+    let dateStr = date !== undefined && date !== null ? String(date).trim() : "";
     activities = activities !== undefined && activities !== null ? String(activities).trim() : "";
+
+    // ALGORITMO DE SEPARACIÓN CRÍTICO
+    if (activities) {
+      const extracted = extractActivityAndDate(activities, dateStr || defaultDate);
+      if (extracted.date !== (dateStr || defaultDate)) {
+        activities = extracted.activity;
+        dateStr = extracted.date;
+      }
+    }
+
+    if (!dateStr && date) {
+      dateStr = String(date).trim();
+    }
+
+    if (dateStr) {
+      const extractedFromDate = extractActivityAndDate(dateStr, defaultDate);
+      if (extractedFromDate.activity && extractedFromDate.date !== defaultDate) {
+        if (!activities || activities === dateStr) {
+          activities = extractedFromDate.activity;
+        }
+        dateStr = extractedFromDate.date;
+      }
+    }
+
+    if (!dateStr) {
+      dateStr = defaultDate;
+    }
 
     if (dateStr) {
       const parts = dateStr.split(/[-/]/);
@@ -201,16 +270,33 @@ export function generateContacts(rawRows: string[][], mappings: Mappings, defaul
     const cleanPhone2 = p2 ? formatPhone(p2) : "";
     const cleanEmail = (email && email.toLowerCase() !== '(no especificado)' && email !== 'n/a') ? email : "";
 
+    const cleanPhoneId = (cleanPhone1 || cleanPhone2 || "").replace(/\D/g, "");
+    const cleanNameId = name.toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]/g, "")
+      .slice(0, 30);
+    const cleanDateId = dateStr.replace(/[^0-9]/g, "");
+    
+    const baseId = `c_${cleanDateId}_${cleanPhoneId || cleanNameId}`;
+    let deterministicId = baseId;
+    let suffix = 2;
+    while (usedIds.has(deterministicId)) {
+      deterministicId = `${baseId}_${suffix}`;
+      suffix++;
+    }
+    usedIds.add(deterministicId);
+
     if (cleanPhone1) phoneCounts.set(cleanPhone1, (phoneCounts.get(cleanPhone1) || 0) + 1);
     if (cleanPhone2) phoneCounts.set(cleanPhone2, (phoneCounts.get(cleanPhone2) || 0) + 1);
 
     parsedContacts.push({
-      id: crypto.randomUUID(),
+      id: deterministicId,
       fullName: finalName,
       phone1: cleanPhone1,
       phone2: cleanPhone2,
       email: cleanEmail,
       activities: activities,
+      pax: pax,
       notes: "",
       waStatus1: 'unverified',
       waStatus2: 'unverified',
@@ -227,6 +313,119 @@ export function generateContacts(rawRows: string[][], mappings: Mappings, defaul
   });
 
   return parsedContacts;
+}
+
+export function parseDate(dateStr: string): Date | null {
+  const parts = dateStr.split('/');
+  if (parts.length !== 3) return null;
+  const d = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10) - 1;
+  const yStr = parts[2];
+  const y = parseInt(yStr.length === 4 ? yStr : "20" + yStr, 10);
+  return new Date(y, m, d);
+}
+
+export function addDay(yyyymmdd: string): string {
+  const y = parseInt(yyyymmdd.slice(0, 4), 10);
+  const m = parseInt(yyyymmdd.slice(4, 6), 10) - 1;
+  const d = parseInt(yyyymmdd.slice(6, 8), 10);
+  
+  if (isNaN(y) || isNaN(m) || isNaN(d)) {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().slice(0, 10).replace(/-/g, '');
+  }
+  
+  const date = new Date(y, m, d);
+  if (isNaN(date.getTime())) {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().slice(0, 10).replace(/-/g, '');
+  }
+
+  date.setDate(date.getDate() + 1);
+  return date.toISOString().slice(0, 10).replace(/-/g, '');
+}
+
+export function validateEventDates(contacts: Contact[]): void {
+  for (const c of contacts) {
+    const rawDate = c.fullName.split(' ')[0];
+    const parts = rawDate.split('/');
+    if (
+      parts.length !== 3 ||
+      isNaN(parseInt(parts[0], 10)) ||
+      isNaN(parseInt(parts[1], 10)) ||
+      isNaN(parseInt(parts[2], 10))
+    ) {
+      window.alert("¡Atención! Hay contactos con datos de fecha incompletos o inválidos. Revisa el archivo original.");
+      return;
+    }
+  }
+}
+
+export function generateICSString(contacts: Contact[]): string {
+  let icsContent = "BEGIN:VCALENDAR\r\nPRODID:-//Google Inc//Google Calendar 70.9054//EN\r\nVERSION:2.0\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n";
+  const processedIds = new Set<string>();
+
+  contacts.forEach((c) => {
+    if (processedIds.has(c.id)) return;
+    
+    const sharedGroup = getSharedGroup(c, contacts);
+    sharedGroup.forEach(item => processedIds.add(item.id));
+    
+    const sharedHistoryString = sharedGroup.map(item => `• [${item.fullName.split(' ')[0]}] Contacto: ${item.fullName} - Pasajero: ${item.pax || '1'} -> Actividad: ${item.activities}`).join('\\n');
+    
+    sharedGroup.forEach(item => {
+      const rowActivities = item.activities.split(',').map(a => a.trim()).filter(a => a);
+      if (rowActivities.length === 0) rowActivities.push('Actividad');
+
+      rowActivities.forEach((act, actIndex) => {
+        const dateStr = item.fullName.split(' ')[0];
+        const dateParts = dateStr.split('/');
+        let dtStart = "";
+        if (dateParts.length === 3) {
+            const yStr = dateParts[2];
+            const y = yStr.length === 4 ? yStr : "20" + yStr;
+            const m = dateParts[1].padStart(2, '0');
+            const d = dateParts[0].padStart(2, '0');
+            dtStart = `${y}${m}${d}`;
+        } else {
+            dtStart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        }
+
+        const dtEnd = addDay(dtStart);
+        const uid = `${dtStart}-${item.id}-${actIndex}@gestioncontactos.com`;
+        const dtStamp = new Date().toISOString().replace(/[:.-]/g, '').slice(0, 15) + 'Z';
+        
+        const escapedSummary = escapeVCardValue(`${act} - ${item.fullName}`);
+        const phone = item.phone1 || item.phone2 || '';
+        const phoneClean = phone.replace(/\D/g, '');
+        const countryStr = getCountryCode(phone);
+        
+        // Description formatting - MUST BE ONE PHYSICAL LINE in the file
+        const desc = `=== DATOS DEL PASAJERO ===\\n• Nombre Completo: ${item.fullName}\\n• Teléfono: ${phone}\\n• WhatsApp Directo: https://wa.me/${phoneClean}\\n• Email: ${item.email}\\n• Pasajeros: ${item.pax}\\n• País: ${countryStr}\\n• Conciliación: ${dateStr}\\n==========================\\n\\n=== HISTORIAL COMPARTIDO DEL TELÉFONO ===\\n${sharedHistoryString}\\n=========================================`;
+
+        icsContent += "BEGIN:VEVENT\r\n";
+        icsContent += `UID:${uid}\r\n`;
+        icsContent += `DTSTAMP:${dtStamp}\r\n`;
+        icsContent += `DTSTART;VALUE=DATE:${dtStart}\r\n`;
+        icsContent += `DTEND;VALUE=DATE:${dtEnd}\r\n`;
+        icsContent += `SUMMARY:${escapedSummary}\r\n`;
+        icsContent += `TRANSP:TRANSPARENT\r\n`;
+        icsContent += `DESCRIPTION:${desc}\r\n`;
+        icsContent += "END:VEVENT\r\n";
+      });
+    });
+  });
+
+  icsContent += "END:VCALENDAR";
+  return icsContent;
+}
+
+export function generateICSBlob(contacts: Contact[]): Blob {
+  validateEventDates(contacts);
+  const icsContent = generateICSString(contacts);
+  return new Blob([icsContent], { type: 'text/calendar;charset=utf-8;' });
 }
 
 export function getSharedGroup(contact: Contact, allContacts: Contact[]): Contact[] {
