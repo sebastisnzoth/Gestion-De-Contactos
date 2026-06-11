@@ -121,6 +121,12 @@ export function getCountryCode(phone: string): string {
   if (digits.startsWith('54')) return 'AR';
   if (digits.startsWith('57')) return 'CO';
   if (digits.startsWith('51')) return 'PE';
+  if (digits.startsWith('52')) return 'MX';
+  if (digits.startsWith('502')) return 'GUA';
+  if (digits.startsWith('506')) return 'CR';
+  if (digits.startsWith('595')) return 'PY';
+  if (digits.startsWith('598')) return 'URU';
+  if (digits.startsWith('591')) return 'BOL';
   return 'CH';
 }
 
