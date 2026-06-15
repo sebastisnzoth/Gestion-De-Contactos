@@ -15,6 +15,17 @@ export interface Contact {
   isDuplicate: boolean;
 }
 
+export type SpreadsheetType = 'trf' | 'comp' | 'activities';
+
+export interface CompRecord {
+  id: string;
+  titular: string;
+  email: string;
+  phone: string;
+  notes: string;
+  isDuplicate?: boolean;
+}
+
 export interface Mappings {
   mapName: number | "";
   mapPhone: number | "";

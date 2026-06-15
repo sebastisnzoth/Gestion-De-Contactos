@@ -4,13 +4,14 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, AlertCircle, FileSpreadsheet, CheckCircle2, XCircle, MessageCircle, Eye } from 'lucide-react';
+import { Download, AlertCircle, FileSpreadsheet, CheckCircle2, XCircle, MessageCircle, Eye, FileText, Calendar } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
   parseCSVText,
   computeInitialMappings,
   generateContacts,
   generateVCFBlobs,
+  generateCompVCFBlob,
   getSharedGroup,
   generateICSBlob,
   generateICSString,
@@ -22,9 +23,10 @@ import {
   checkWASender,
   formatPhone
 } from './lib/utils';
-import { Contact, WaMethod, GlobalConfig, Mappings } from './types';
+import { Contact, WaMethod, GlobalConfig, Mappings, CompRecord, SpreadsheetType } from './types';
 
 export default function App() {
+  const [spreadsheetType, setSpreadsheetType] = useState<SpreadsheetType>('trf');
   const [rawRows, setRawRows] = useState<string[][]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
   const [filename, setFilename] = useState<string>('');
@@ -40,6 +42,7 @@ export default function App() {
   });
   
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [compRecords, setCompRecords] = useState<CompRecord[]>([]);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
@@ -86,11 +89,101 @@ export default function App() {
     }
   };
 
+  const detectCompDuplicates = (records: CompRecord[]) => {
+    const phoneMap = new Map<string, CompRecord[]>();
+    
+    // Group records by clean phone number
+    records.forEach(r => {
+      const cleanPhone = r.phone?.replace(/\D/g, '');
+      if (cleanPhone && cleanPhone.length >= 8) {
+        const group = phoneMap.get(cleanPhone) || [];
+        group.push(r);
+        phoneMap.set(cleanPhone, group);
+      }
+    });
+
+    return records.map(r => {
+      const cleanPhone = r.phone?.replace(/\D/g, '');
+      const group = (cleanPhone && cleanPhone.length >= 8) ? phoneMap.get(cleanPhone) : null;
+      
+      if (group && group.length > 1) {
+        const others = group.filter(other => other.id !== r.id);
+        const otherNames = others.map(o => o.titular).join(', ');
+        
+        // Only append if it's not already in notes to avoid repeated additions on subsequent edits
+        const duplicateNote = `[DUPLICADO con: ${otherNames}]`;
+        let updatedNotes = r.notes;
+        
+        // Remove existing duplicate note if present to refresh it
+        updatedNotes = updatedNotes.replace(/\[DUPLICADO con:.*?\]/g, '').trim();
+        if (updatedNotes.endsWith('|')) updatedNotes = updatedNotes.slice(0, -1).trim();
+        
+        updatedNotes = updatedNotes ? `${updatedNotes} | ${duplicateNote}` : duplicateNote;
+
+        return { ...r, isDuplicate: true, notes: updatedNotes };
+      }
+      
+      // If no longer a duplicate, clean up the note if it was there
+      let cleanNotes = r.notes.replace(/\[DUPLICADO con:.*?\]/g, '').trim();
+      if (cleanNotes.endsWith('|')) cleanNotes = cleanNotes.slice(0, -1).trim();
+      
+      return { ...r, isDuplicate: false, notes: cleanNotes };
+    });
+  };
+
   const processLoadedRows = (rows: string[][]) => {
     let filteredRows = rows.filter(r => r.length > 0 && r.some(cell => cell && String(cell).trim() !== ''));
     if (filteredRows.length === 0) {
       alert('El archivo cargado no contiene datos válidos.');
       return;
+    }
+
+    if (spreadsheetType === 'comp') {
+        const headerRow = filteredRows[0].map(h => String(h).toLowerCase().trim());
+        
+        const colDate = headerRow.findIndex(h => h.includes('fecha de compra'));
+        const colCountry = headerRow.findIndex(h => h.includes('país de compra') || h.includes('pais de compra'));
+        const colName = headerRow.findIndex(h => h.includes('titular de la reserva'));
+        const colPax = headerRow.findIndex(h => h.includes('cantidad adulto') || h.includes('pax'));
+        const colPhone = headerRow.findIndex(h => h.includes('teléfono') || h.includes('telefono'));
+        const colDest = headerRow.findIndex(h => h.includes('punto de interés destino') || h.includes('interes destino'));
+        const colHotel = headerRow.findIndex(h => (h.includes('hotel') || h.includes('punto de interés')) && !h.includes('destino'));
+        const colEmail = headerRow.findIndex(h => h.includes('e-mail') || h.includes('email'));
+        const colTime = headerRow.findIndex(h => h.includes('hora pickup') || h.includes('hora'));
+
+        const newRecords: CompRecord[] = filteredRows.slice(1).map((row, idx) => {
+            const getVal = (colIdx: number) => colIdx >= 0 ? String(row[colIdx] || '').trim() : '';
+            const titularParts = [];
+            if (getVal(colDate)) titularParts.push(getVal(colDate));
+            if (getVal(colCountry)) titularParts.push(getVal(colCountry).substring(0, 2).toLowerCase()); 
+            if (getVal(colPax)) titularParts.push(`x${getVal(colPax)}`);
+            if (getVal(colName)) titularParts.push(getVal(colName));
+            if (getVal(colHotel) || getVal(colDest)) titularParts.push(getVal(colHotel) || getVal(colDest));
+            
+            const finalTitular = titularParts.length > 0 ? titularParts.join(' ') : String(row[0] || '').trim();
+            const notesArr = [];
+            if (getVal(colTime)) notesArr.push(`Hora: ${getVal(colTime)}`);
+            
+            // Include ALL columns in notes as requested
+            row.forEach((cell, cIdx) => {
+                if (cell && String(cell).trim() !== '') {
+                   const headerName = filteredRows[0][cIdx] || `Col ${cIdx+1}`;
+                   notesArr.push(`${headerName}: ${cell}`);
+                }
+            });
+
+            return {
+                id: `comp-${Date.now()}-${idx}`,
+                titular: finalTitular,
+                email: getVal(colEmail),
+                phone: getVal(colPhone),
+                notes: notesArr.join(' | ')
+            };
+        });
+        
+        setCompRecords(detectCompDuplicates(newRecords));
+        setActiveTab('comp');
+        return;
     }
 
     let headerIndex = 0;
@@ -266,8 +359,259 @@ export default function App() {
     </div>;
   };
 
-  const [activeTab, setActiveTab] = useState<'contacts' | 'report'>('contacts');
+  const [activeTab, setActiveTab] = useState<'contacts' | 'report' | 'comp'>('contacts');
   const [reportSearch, setReportSearch] = useState('');
+
+  const CompTab = () => {
+    const compFileInputRef = useRef<HTMLInputElement>(null);
+    const [isDragging, setIsDragging] = useState(false);
+
+    const processCompFile = (file: File) => {
+      const extension = file.name.split('.').pop()?.toLowerCase();
+      if (!['csv', 'xlsx', 'xls'].includes(extension || '')) {
+        alert('Selecciona un archivo .csv, .xlsx o .xls válido.');
+        return;
+      }
+      
+      const reader = new FileReader();
+      
+      const processLoadedRows = (rows: string[][]) => {
+        const filtered = rows.filter(r => r.length > 0 && r.some(c => c && String(c).trim() !== ''));
+        if (filtered.length <= 1) {
+            alert('El archivo cargado no contiene datos suficientes.');
+            return;
+        }
+        
+        const headerRow = filtered[0].map(h => String(h).toLowerCase().trim());
+        
+        const colDate = headerRow.findIndex(h => h.includes('fecha de compra'));
+        const colCountry = headerRow.findIndex(h => h.includes('país de compra') || h.includes('pais de compra'));
+        const colName = headerRow.findIndex(h => h.includes('titular de la reserva'));
+        const colPax = headerRow.findIndex(h => h.includes('cantidad adulto') || h.includes('pax'));
+        const colPhone = headerRow.findIndex(h => h.includes('teléfono') || h.includes('telefono'));
+        const colDest = headerRow.findIndex(h => h.includes('punto de interés destino') || h.includes('interes destino'));
+        const colHotel = headerRow.findIndex(h => (h.includes('hotel') || h.includes('punto de interés')) && !h.includes('destino'));
+        const colEmail = headerRow.findIndex(h => h.includes('e-mail') || h.includes('email'));
+        const colTime = headerRow.findIndex(h => h.includes('hora pickup') || h.includes('hora'));
+
+        const newRecords: CompRecord[] = filtered.slice(1).map((row, idx) => {
+            const getVal = (colIdx: number) => colIdx >= 0 ? String(row[colIdx] || '').trim() : '';
+            
+            const date = getVal(colDate);
+            const country = getVal(colCountry);
+            const name = getVal(colName);
+            const pax = getVal(colPax);
+            const phone = getVal(colPhone);
+            const dest = getVal(colDest);
+            const hotel = getVal(colHotel);
+            const email = getVal(colEmail);
+            const time = getVal(colTime);
+
+            const titularParts = [];
+            if (date) titularParts.push(date);
+            if (country) titularParts.push(country.substring(0, 2).toLowerCase()); 
+            if (pax) titularParts.push(`x${pax}`);
+            if (name) titularParts.push(name);
+            if (hotel || dest) titularParts.push(hotel || dest);
+            
+            const fallbackTitular = String(row[0] || '').trim();
+            const finalTitular = titularParts.length > 0 ? titularParts.join(' ') : fallbackTitular;
+
+            const notesArr = [];
+            if (time) notesArr.push(`Hora: ${time}`);
+            
+            // Include ALL columns in notes as requested
+            row.forEach((cell, cIdx) => {
+                if (cell && String(cell).trim() !== '') {
+                   const headerName = filtered[0][cIdx] || `Col ${cIdx+1}`;
+                   notesArr.push(`${headerName}: ${cell}`);
+                }
+            });
+
+            const finalNotes = notesArr.length > 0 ? notesArr.join(' | ') : row.slice(3).map(c => String(c).trim()).filter(c => c).join(' | ');
+
+            return {
+                id: `comp-${Date.now()}-${idx}`,
+                titular: finalTitular,
+                email: email,
+                phone: phone,
+                notes: finalNotes
+            };
+        });
+        
+        setCompRecords(detectCompDuplicates([...compRecords, ...newRecords]));
+      };
+
+      if (extension === 'csv') {
+        reader.onload = (e) => {
+          const text = e.target?.result as string;
+          const rows = parseCSVText(text);
+          processLoadedRows(rows);
+        };
+        reader.readAsText(file, 'UTF-8');
+      } else {
+        reader.onload = (e) => {
+          const data = new Uint8Array(e.target?.result as ArrayBuffer);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+          processLoadedRows(rows.map(r => r.map(c => String(c))));
+        };
+        reader.readAsArrayBuffer(file);
+      }
+    };
+
+    return (
+      <div className="space-y-6">
+        <div className="bg-white rounded-xl shadow-sm p-4 md:p-6 border border-gray-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-4">
+            <div>
+              <h2 className="text-lg font-semibold mb-2 text-gray-900 flex items-center gap-2">
+                 <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-full">COMP</span>
+                 Cargar Consolidado
+              </h2>
+              <p className="text-xs text-gray-500">Sube tu archivo Excel de transferencias, reportes consolidados o actividades para conciliar.</p>
+            </div>
+            <div className="flex gap-2">
+              {compRecords.length > 0 && (
+                <>
+                  <button
+                    onClick={() => setCompRecords([])}
+                    className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg text-xs font-semibold transition border border-red-100"
+                  >
+                    Limpiar Todo
+                  </button>
+                  <button
+                    onClick={() => {
+                      const blob = generateCompVCFBlob(compRecords);
+                      downloadVCF(blob, 'contactos_comp.vcf');
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition shadow-sm"
+                  >
+                    <Download className="w-4 h-4" />
+                    Exportar VCF
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+          
+          <div 
+            className={`border-2 border-dashed ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300'} rounded-lg p-6 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition mb-4`}
+            onClick={() => compFileInputRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={(e) => { e.preventDefault(); setIsDragging(false); if (e.dataTransfer.files.length) processCompFile(e.dataTransfer.files[0]); }}
+          >
+            <input type="file" ref={compFileInputRef} className="hidden" accept=".csv, .xlsx, .xls" onChange={(e) => { if (e.target.files?.length) processCompFile(e.target.files[0]); }} />
+            <FileSpreadsheet className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+            <p className="text-sm text-gray-600">Arrastra tu archivo <strong>Excel</strong> o <strong>CSV</strong> de COMP aquí</p>
+          </div>
+
+          <div className="border border-gray-200 rounded-xl overflow-hidden mt-6">
+             <div className="hidden md:grid grid-cols-12 gap-4 bg-gray-50 p-4 text-xs font-semibold uppercase text-gray-700 border-b border-gray-200">
+                <div className="col-span-3">Titular de la reserva</div>
+                <div className="col-span-2">Teléfono</div>
+                <div className="col-span-3">Email</div>
+                <div className="col-span-3">Notas</div>
+                <div className="col-span-1">Acciones</div>
+             </div>
+             <div className="divide-y divide-gray-200 bg-white">
+                {compRecords.length === 0 ? (
+                  <div className="p-8 text-center text-gray-400 text-sm italic">
+                     Aún no has cargado ningún registro COMP. Selecciona el tipo "Planilla COMP" arriba y sube tu archivo.
+                  </div>
+                ) : (
+                  compRecords.map((c, idx) => (
+                    <div key={c.id} className={`p-4 grid grid-cols-1 md:grid-cols-12 gap-4 items-center transition border-l-2 ${c.isDuplicate ? 'bg-yellow-50/50 border-yellow-400' : 'hover:bg-blue-50/30 border-transparent hover:border-blue-500'}`}>
+                       <div className="md:col-span-3">
+                          <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase mb-1">Titular de la reserva</label>
+                          <input 
+                            type="text" 
+                            value={c.titular} 
+                            onChange={e => {
+                               const newR = [...compRecords];
+                               newR[idx].titular = e.target.value;
+                               setCompRecords(detectCompDuplicates(newR));
+                            }}
+                            className="w-full bg-transparent border-transparent hover:border-gray-200 focus:border-blue-500 rounded px-2 text-sm font-medium focus:bg-white"
+                          />
+                       </div>
+                       <div className="md:col-span-2 flex items-center gap-2">
+                          <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase">Teléfono</label>
+                          <div className="flex-1">
+                            <input 
+                              type="text" 
+                              value={c.phone} 
+                              onChange={e => {
+                                 const newR = [...compRecords];
+                                 newR[idx].phone = e.target.value;
+                                 setCompRecords(detectCompDuplicates(newR));
+                              }}
+                              className="w-full bg-transparent border-transparent hover:border-gray-200 focus:border-blue-500 rounded px-2 text-sm focus:bg-white font-mono"
+                            />
+                          </div>
+                          {c.phone && (
+                            <a 
+                              href={`https://wa.me/${c.phone.replace(/\D/g, '')}`} 
+                              target="_blank" 
+                              rel="noreferrer"
+                              className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition shadow-sm border border-green-200 flex-shrink-0"
+                              title="Abrir WhatsApp"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+                       </div>
+                       <div className="md:col-span-3">
+                          <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase mb-1">Email</label>
+                          <input 
+                            type="email" 
+                            value={c.email} 
+                            onChange={e => {
+                               const newR = [...compRecords];
+                               newR[idx].email = e.target.value;
+                               setCompRecords(detectCompDuplicates(newR));
+                            }}
+                            className="w-full bg-transparent border-transparent hover:border-gray-200 focus:border-blue-500 rounded px-2 text-sm text-blue-700/80 focus:bg-white"
+                          />
+                       </div>
+                       <div className="md:col-span-3">
+                          <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase mb-1">Notas</label>
+                          <input 
+                            type="text" 
+                            value={c.notes} 
+                            onChange={e => {
+                               const newR = [...compRecords];
+                               newR[idx].notes = e.target.value;
+                               setCompRecords(detectCompDuplicates(newR));
+                            }}
+                            className="w-full bg-transparent border-transparent hover:border-gray-200 focus:border-blue-500 rounded px-2 text-[11px] text-gray-500 focus:bg-white truncate"
+                            title={c.notes}
+                          />
+                       </div>
+                       <div className="md:col-span-1 flex justify-end">
+                          <button 
+                            onClick={() => {
+                              const newR = compRecords.filter((_, i) => i !== idx);
+                              setCompRecords(detectCompDuplicates(newR));
+                            }}
+                            className="p-1 px-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition"
+                            title="Eliminar registro"
+                          >
+                            ✕
+                          </button>
+                       </div>
+                    </div>
+                  ))
+                )}
+             </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const EventReportTab = ({ contacts }: { contacts: Contact[] }) => {
     // Flat activities
@@ -592,6 +936,28 @@ export default function App() {
                 <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-full">1</span>
                 Cargar archivo de datos
               </h2>
+
+              <div className="flex flex-wrap gap-3 mb-6 p-1 bg-gray-100 rounded-xl w-fit">
+                {[
+                  { value: 'trf', label: 'Planilla TRF', color: 'blue', icon: <FileSpreadsheet className="w-4 h-4" /> },
+                  { value: 'comp', label: 'Planilla COMP', color: 'indigo', icon: <FileText className="w-4 h-4" /> },
+                  { value: 'activities', label: 'Planilla Actividades', color: 'emerald', icon: <Calendar className="w-4 h-4" /> }
+                ].map((type) => (
+                  <button
+                    key={type.value}
+                    onClick={() => setSpreadsheetType(type.value as SpreadsheetType)}
+                    className={`flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-bold transition-all duration-200 ${
+                      spreadsheetType === type.value 
+                        ? `bg-white text-${type.color}-700 shadow-md border border-gray-200 ring-2 ring-${type.color}-500/10` 
+                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+                    }`}
+                  >
+                    {type.icon}
+                    {type.label}
+                  </button>
+                ))}
+              </div>
+
               <div 
                 className={`border-2 border-dashed ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300'} rounded-lg p-6 md:p-8 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition mb-2`}
                 onClick={() => fileInputRef.current?.click()}
@@ -797,6 +1163,12 @@ export default function App() {
               >
                 📅 Reporte de Eventos
               </button>
+              <button
+                onClick={() => setActiveTab('comp')}
+                className={`px-4 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all duration-150 ${activeTab === 'comp' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-500 hover:text-blue-900'}`}
+              >
+                📊 COMP
+              </button>
             </div>
           </div>
           
@@ -903,9 +1275,13 @@ export default function App() {
                 )}
               </div>
             </div>
-          ) : (
+          ) : activeTab === 'report' ? (
             <div className="bg-white rounded-xl p-2 animate-in fade-in duration-200">
               <EventReportTab contacts={contacts} />
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl p-2 animate-in fade-in duration-200">
+              <CompTab />
             </div>
           )}
         </div>

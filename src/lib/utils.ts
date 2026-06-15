@@ -444,6 +444,37 @@ export function escapeVCardValue(val: string): string {
     .replace(/\n/g, '\\n');
 }
 
+export function generateCompVCFBlob(records: import('../types').CompRecord[]): Blob {
+  let vcfContent = "";
+
+  records.forEach(c => {
+    const fnName = c.titular.split(' ').slice(0, 3).join(' ') || 'Contacto COMP';
+    const escapedName = escapeVCardValue(c.titular || 'Sin Titular');
+    const escapedEmail = escapeVCardValue(c.email);
+
+    vcfContent += "BEGIN:VCARD\r\n";
+    vcfContent += "VERSION:3.0\r\n";
+    vcfContent += `FN;CHARSET=UTF-8:${escapedName}\r\n`;
+    vcfContent += `N;CHARSET=UTF-8:;${escapedName};;;\r\n`;
+    
+    if (c.phone) {
+      // Clean phone, just some extra formatting if needed, but we keep it raw here
+      vcfContent += `TEL;TYPE=CELL:${c.phone}\r\n`;
+    }
+    
+    if (c.email) vcfContent += `EMAIL;TYPE=INTERNET:${escapedEmail}\r\n`;
+    
+    if (c.notes) {
+      const encodedNote = c.notes.replace(/\n/g, '\\n').replace(/\r/g, '');
+      vcfContent += `NOTE;CHARSET=UTF-8:${escapeVCardValue(encodedNote)}\r\n`;
+    }
+    
+    vcfContent += "END:VCARD\r\n";
+  });
+
+  return new Blob([vcfContent], { type: 'text/vcard;charset=utf-8;' });
+}
+
 export function generateVCFBlobs(sharedGroup: Contact[]): Blob {
   let vcfContent = "";
 
