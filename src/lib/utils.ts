@@ -458,8 +458,10 @@ export function generateCompVCFBlob(records: import('../types').CompRecord[]): B
     vcfContent += `N;CHARSET=UTF-8:;${escapedName};;;\r\n`;
     
     if (c.phone) {
-      // Clean phone, just some extra formatting if needed, but we keep it raw here
-      vcfContent += `TEL;TYPE=CELL:${c.phone}\r\n`;
+      const phones = c.phone.split(',').map(p => p.trim()).filter(p => p.length > 0);
+      phones.forEach((phone, pIdx) => {
+        vcfContent += `TEL;TYPE=CELL,VOICE;X-LABEL=WhatsApp ${pIdx + 1}:${phone}\r\n`;
+      });
     }
     
     if (c.email) vcfContent += `EMAIL;TYPE=INTERNET:${escapedEmail}\r\n`;
@@ -490,8 +492,8 @@ export function generateVCFBlobs(sharedGroup: Contact[]): Blob {
     vcfContent += "VERSION:3.0\r\n";
     vcfContent += `FN;CHARSET=UTF-8:${escapedName}\r\n`;
     vcfContent += `N;CHARSET=UTF-8:;${escapedName};;;\r\n`;
-    if (c.phone1) vcfContent += `TEL;TYPE=CELL:${c.phone1}\r\n`;
-    if (c.phone2) vcfContent += `TEL;TYPE=CELL:${c.phone2}\r\n`;
+    if (c.phone1) vcfContent += `TEL;TYPE=CELL,VOICE;X-LABEL=WhatsApp 1:${c.phone1}\r\n`;
+    if (c.phone2) vcfContent += `TEL;TYPE=CELL,VOICE;X-LABEL=WhatsApp 2:${c.phone2}\r\n`;
     if (c.email) vcfContent += `EMAIL;TYPE=INTERNET:${escapedEmail}\r\n`;
     
     // Using multiline encoding according to vCard 3.0 spec (space at start of line)

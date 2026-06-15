@@ -4,7 +4,8 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, AlertCircle, FileSpreadsheet, CheckCircle2, XCircle, MessageCircle, Eye, FileText, Calendar } from 'lucide-react';
+import { Download, AlertCircle, FileSpreadsheet, CheckCircle2, XCircle, MessageCircle, Eye, FileText, Calendar, GitMerge, Users, Settings, LayoutDashboard, Share2, Search, Filter } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
 import {
   parseCSVText,
@@ -89,33 +90,87 @@ export default function App() {
     }
   };
 
+  const detectDuplicates = (list: Contact[]) => {
+    const phoneMap = new Map<string, Contact[]>();
+    
+    list.forEach(c => {
+      const p1 = c.phone1.replace(/\D/g, '');
+      const p2 = c.phone2.replace(/\D/g, '');
+      const cleanPhones = [p1, p2].filter(p => p.length >= 8);
+      
+      cleanPhones.forEach(cp => {
+        const group = phoneMap.get(cp) || [];
+        group.push(c);
+        phoneMap.set(cp, group);
+      });
+    });
+
+    return list.map(c => {
+      const p1 = c.phone1.replace(/\D/g, '');
+      const p2 = c.phone2.replace(/\D/g, '');
+      const cleanPhones = [p1, p2].filter(p => p.length >= 8);
+      
+      const related = new Set<Contact>();
+      cleanPhones.forEach(cp => {
+        const group = phoneMap.get(cp);
+        if (group) {
+          group.forEach(other => {
+            if (other.id !== c.id) related.add(other);
+          });
+        }
+      });
+
+      if (related.size > 0) {
+        const otherNames = Array.from(related).map(r => r.fullName).join(', ');
+        const duplicateNote = `[DUPLICADO con: ${otherNames}]`;
+        let updatedNotes = c.notes.replace(/\[DUPLICADO con:.*?\]/g, '').trim();
+        if (updatedNotes.endsWith('|')) updatedNotes = updatedNotes.slice(0, -1).trim();
+        updatedNotes = updatedNotes ? `${updatedNotes} | ${duplicateNote}` : duplicateNote;
+
+        return { ...c, isDuplicate: true, notes: updatedNotes };
+      }
+      
+      let cleanNotes = c.notes.replace(/\[DUPLICADO con:.*?\]/g, '').trim();
+      if (cleanNotes.endsWith('|')) cleanNotes = cleanNotes.slice(0, -1).trim();
+      return { ...c, isDuplicate: false, notes: cleanNotes };
+    });
+  };
+
   const detectCompDuplicates = (records: CompRecord[]) => {
     const phoneMap = new Map<string, CompRecord[]>();
     
-    // Group records by clean phone number
+    // Group records by every clean phone number they contain
     records.forEach(r => {
-      const cleanPhone = r.phone?.replace(/\D/g, '');
-      if (cleanPhone && cleanPhone.length >= 8) {
-        const group = phoneMap.get(cleanPhone) || [];
+      const phones = r.phone?.split(',') || [];
+      const cleanPhones = [...new Set(phones.map(p => p.replace(/\D/g, '')).filter(p => p.length >= 8))];
+      
+      cleanPhones.forEach(cp => {
+        const group = phoneMap.get(cp) || [];
         group.push(r);
-        phoneMap.set(cleanPhone, group);
-      }
+        phoneMap.set(cp, group);
+      });
     });
 
     return records.map(r => {
-      const cleanPhone = r.phone?.replace(/\D/g, '');
-      const group = (cleanPhone && cleanPhone.length >= 8) ? phoneMap.get(cleanPhone) : null;
+      const phones = r.phone?.split(',') || [];
+      const cleanPhones = [...new Set(phones.map(p => p.replace(/\D/g, '')).filter(p => p.length >= 8))];
       
-      if (group && group.length > 1) {
-        const others = group.filter(other => other.id !== r.id);
+      const relatedRecords = new Set<CompRecord>();
+      cleanPhones.forEach(cp => {
+        const group = phoneMap.get(cp);
+        if (group) {
+          group.forEach(other => {
+            if (other.id !== r.id) relatedRecords.add(other);
+          });
+        }
+      });
+
+      if (relatedRecords.size > 0) {
+        const others = Array.from(relatedRecords);
         const otherNames = others.map(o => o.titular).join(', ');
         
-        // Only append if it's not already in notes to avoid repeated additions on subsequent edits
         const duplicateNote = `[DUPLICADO con: ${otherNames}]`;
-        let updatedNotes = r.notes;
-        
-        // Remove existing duplicate note if present to refresh it
-        updatedNotes = updatedNotes.replace(/\[DUPLICADO con:.*?\]/g, '').trim();
+        let updatedNotes = r.notes.replace(/\[DUPLICADO con:.*?\]/g, '').trim();
         if (updatedNotes.endsWith('|')) updatedNotes = updatedNotes.slice(0, -1).trim();
         
         updatedNotes = updatedNotes ? `${updatedNotes} | ${duplicateNote}` : duplicateNote;
@@ -123,7 +178,6 @@ export default function App() {
         return { ...r, isDuplicate: true, notes: updatedNotes };
       }
       
-      // If no longer a duplicate, clean up the note if it was there
       let cleanNotes = r.notes.replace(/\[DUPLICADO con:.*?\]/g, '').trim();
       if (cleanNotes.endsWith('|')) cleanNotes = cleanNotes.slice(0, -1).trim();
       
@@ -362,9 +416,124 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'contacts' | 'report' | 'comp'>('contacts');
   const [reportSearch, setReportSearch] = useState('');
 
+  const mergeRecords = (sourceId: string) => {
+    const recordToMerge = compRecords.find(r => r.id === sourceId);
+    if (!recordToMerge) return;
+
+    // Find all records that share phones with this one
+    const phones = recordToMerge.phone?.split(',').map(p => p.trim()).filter(p => p.length > 0) || [];
+    const cleanPhones = phones.map(p => p.replace(/\D/g, '')).filter(p => p.length >= 8);
+
+    const related = compRecords.filter(r => {
+      if (r.id === sourceId) return false;
+      const otherPhones = r.phone?.split(',').map(p => p.trim()).filter(p => p.length > 0) || [];
+      const otherClean = otherPhones.map(p => p.replace(/\D/g, '')).filter(p => p.length >= 8);
+      return cleanPhones.some(cp => otherClean.includes(cp));
+    });
+
+    if (related.length === 0) return;
+
+    // We'll merge into the first related record found
+    const target = related[0];
+    const targetIndex = compRecords.findIndex(r => r.id === target.id);
+    
+    const newRecords = [...compRecords];
+    const updatedTarget = { ...newRecords[targetIndex] };
+
+    // Merge phones
+    const allPhones = [...(updatedTarget.phone?.split(',') || []), ...(recordToMerge.phone?.split(',') || [])]
+      .map(p => p.trim())
+      .filter(p => p.length > 0);
+    
+    // Unique check based on clean number
+    const uniquePhones: string[] = [];
+    const seenClean = new Set<string>();
+    allPhones.forEach(p => {
+      const clean = p.replace(/\D/g, '');
+      if (!seenClean.has(clean)) {
+        seenClean.add(clean);
+        uniquePhones.push(p);
+      }
+    });
+    updatedTarget.phone = uniquePhones.join(', ');
+
+    // Merge notes
+    const cleanTargetNotes = updatedTarget.notes.replace(/\[DUPLICADO con:.*?\]/g, '').trim();
+    const cleanSourceNotes = recordToMerge.notes.replace(/\[DUPLICADO con:.*?\]/g, '').trim();
+    
+    const fusionInfo = `[FUSIÓN: Datos de ${recordToMerge.titular} combinados el ${new Date().toLocaleDateString()}]`;
+    
+    let finalNotes = cleanTargetNotes;
+    if (cleanSourceNotes && cleanSourceNotes !== cleanTargetNotes) {
+      finalNotes = finalNotes ? `${finalNotes} | ${cleanSourceNotes}` : cleanSourceNotes;
+    }
+    updatedTarget.notes = finalNotes ? `${finalNotes} | ${fusionInfo}` : fusionInfo;
+
+    newRecords[targetIndex] = updatedTarget;
+    // Remove the source record
+    const finalRecords = newRecords.filter(r => r.id !== sourceId);
+    
+    setCompRecords(detectCompDuplicates(finalRecords));
+  };
+
+  const mergeMainContacts = (sourceId: string) => {
+    const contactToMerge = contacts.find(c => c.id === sourceId);
+    if (!contactToMerge) return;
+
+    // Find all contacts that share phones with this one
+    const p1 = contactToMerge.phone1.replace(/\D/g, '');
+    const p2 = contactToMerge.phone2.replace(/\D/g, '');
+    const cleanPhones = [p1, p2].filter(p => p.length >= 8);
+
+    const related = contacts.filter(c => {
+      if (c.id === sourceId) return false;
+      const cp1 = c.phone1.replace(/\D/g, '');
+      const cp2 = c.phone2.replace(/\D/g, '');
+      return cleanPhones.some(p => p === cp1 || p === cp2);
+    });
+
+    if (related.length === 0) return;
+
+    // Merge into the first related contact
+    const target = related[0];
+    const targetIndex = contacts.findIndex(c => c.id === target.id);
+    
+    const newContacts = [...contacts];
+    const updatedTarget = { ...newContacts[targetIndex] };
+
+    // Merge activities
+    const actParts = [...updatedTarget.activities.split(','), ...contactToMerge.activities.split(',')]
+      .map(a => a.trim())
+      .filter(a => a);
+    updatedTarget.activities = [...new Set(actParts)].join(', ');
+
+    // Merge phones
+    if (!updatedTarget.phone2 && contactToMerge.phone1 && contactToMerge.phone1 !== updatedTarget.phone1) {
+      updatedTarget.phone2 = contactToMerge.phone1;
+    }
+
+    // Merge notes
+    const cleanTargetNotes = updatedTarget.notes.replace(/\[DUPLICADO con:.*?\]/g, '').trim();
+    const cleanSourceNotes = contactToMerge.notes.replace(/\[DUPLICADO con:.*?\]/g, '').trim();
+    const fusionInfo = `[FUSIÓN: Datos de ${contactToMerge.fullName} combinados el ${new Date().toLocaleDateString()}]`;
+    
+    let finalNotes = cleanTargetNotes;
+    if (cleanSourceNotes && cleanSourceNotes !== cleanTargetNotes) {
+      finalNotes = finalNotes ? `${finalNotes} | ${cleanSourceNotes}` : cleanSourceNotes;
+    }
+    updatedTarget.notes = finalNotes ? `${finalNotes} | ${fusionInfo}` : fusionInfo;
+
+    newContacts[targetIndex] = updatedTarget;
+    // Remove the source
+    const finalContacts = newContacts.filter(c => c.id !== sourceId);
+    
+    setContacts(detectDuplicates(finalContacts));
+  };
+
   const CompTab = () => {
     const compFileInputRef = useRef<HTMLInputElement>(null);
     const [isDragging, setIsDragging] = useState(false);
+    const [compSubTab, setCompSubTab] = useState<'all' | 'trf' | 'activities'>('all');
 
     const processCompFile = (file: File) => {
       const extension = file.name.split('.').pop()?.toLowerCase();
@@ -394,6 +563,12 @@ export default function App() {
         const colEmail = headerRow.findIndex(h => h.includes('e-mail') || h.includes('email'));
         const colTime = headerRow.findIndex(h => h.includes('hora pickup') || h.includes('hora'));
 
+        // Try to identify if it's TRF or Activities based on name or headers
+        let inferredType: 'trf' | 'activities' | 'comp' = 'comp';
+        const fileLower = file.name.toLowerCase();
+        if (fileLower.includes('trf') || fileLower.includes('transfer')) inferredType = 'trf';
+        else if (fileLower.includes('activi') || fileLower.includes('tour')) inferredType = 'activities';
+
         const newRecords: CompRecord[] = filtered.slice(1).map((row, idx) => {
             const getVal = (colIdx: number) => colIdx >= 0 ? String(row[colIdx] || '').trim() : '';
             
@@ -419,6 +594,7 @@ export default function App() {
 
             const notesArr = [];
             if (time) notesArr.push(`Hora: ${time}`);
+            if (inferredType !== 'comp') notesArr.push(`[${inferredType.toUpperCase()}]`);
             
             // Include ALL columns in notes as requested
             row.forEach((cell, cIdx) => {
@@ -462,32 +638,75 @@ export default function App() {
       }
     };
 
+    const [compSearch, setCompSearch] = useState('');
+
+    const filteredCompRecords = compRecords.filter(r => {
+      const matchesSubTab = compSubTab === 'all' || r.notes.includes(`[${compSubTab.toUpperCase()}]`);
+      const searchLower = compSearch.toLowerCase();
+      const matchesSearch = !compSearch || 
+        r.titular.toLowerCase().includes(searchLower) || 
+        (r.phone || "").toLowerCase().includes(searchLower) || 
+        r.notes.toLowerCase().includes(searchLower);
+      return matchesSubTab && matchesSearch;
+    });
+
     return (
-      <div className="space-y-6">
-        <div className="bg-white rounded-xl shadow-sm p-4 md:p-6 border border-gray-200">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-4">
-            <div>
-              <h2 className="text-lg font-semibold mb-2 text-gray-900 flex items-center gap-2">
-                 <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-full">COMP</span>
-                 Cargar Consolidado
-              </h2>
-              <p className="text-xs text-gray-500">Sube tu archivo Excel de transferencias, reportes consolidados o actividades para conciliar.</p>
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.98 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="space-y-6"
+      >
+        <div className="bg-white rounded-2xl shadow-sm p-4 md:p-6 border border-gray-100">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+            <div className="flex items-center gap-3">
+              <div className="bg-blue-600 p-2.5 rounded-xl shadow-lg shadow-blue-100">
+                <Share2 className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold font-display text-gray-900 tracking-tight">Módulo COMP</h2>
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-0.5">Conciliación de Datos Consolidado</p>
+              </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {compRecords.length > 0 && (
                 <>
                   <button
                     onClick={() => setCompRecords([])}
-                    className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg text-xs font-semibold transition border border-red-100"
+                    className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-xl text-xs font-bold transition border border-red-100 flex items-center gap-2"
                   >
-                    Limpiar Todo
+                    <XCircle className="w-4 h-4" />
+                    Limpiar
                   </button>
+                  {compRecords.some(r => r.isDuplicate) && (
+                    <button
+                      onClick={() => {
+                        const seenPhones = new Set<string>();
+                        const newR = compRecords.filter((r) => {
+                          const phones = r.phone?.split(',') || [];
+                          const cleanPhones = phones.map(p => p.replace(/\D/g, '')).filter(p => p.length >= 8);
+                          
+                          if (r.isDuplicate) {
+                             const hasBeenSeen = cleanPhones.every(p => seenPhones.has(p));
+                             if (hasBeenSeen && cleanPhones.length > 0) return false;
+                             cleanPhones.forEach(p => seenPhones.add(p));
+                             return true;
+                          }
+                          return true;
+                        });
+                        setCompRecords(detectCompDuplicates(newR));
+                      }}
+                      className="px-4 py-2 bg-orange-50 text-orange-700 hover:bg-orange-100 rounded-xl text-xs font-bold border border-orange-200 transition flex items-center gap-2 shadow-sm"
+                    >
+                      <Filter className="w-4 h-4" />
+                      Eliminar Duplicados
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       const blob = generateCompVCFBlob(compRecords);
                       downloadVCF(blob, 'contactos_comp.vcf');
                     }}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition shadow-sm"
+                    className="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-blue-200"
                   >
                     <Download className="w-4 h-4" />
                     Exportar VCF
@@ -497,33 +716,95 @@ export default function App() {
             </div>
           </div>
           
-          <div 
-            className={`border-2 border-dashed ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300'} rounded-lg p-6 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition mb-4`}
-            onClick={() => compFileInputRef.current?.click()}
-            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={(e) => { e.preventDefault(); setIsDragging(false); if (e.dataTransfer.files.length) processCompFile(e.dataTransfer.files[0]); }}
-          >
-            <input type="file" ref={compFileInputRef} className="hidden" accept=".csv, .xlsx, .xls" onChange={(e) => { if (e.target.files?.length) processCompFile(e.target.files[0]); }} />
-            <FileSpreadsheet className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-            <p className="text-sm text-gray-600">Arrastra tu archivo <strong>Excel</strong> o <strong>CSV</strong> de COMP aquí</p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+            <div 
+              className={`border-2 border-dashed ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-200'} rounded-2xl p-6 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50/50 transition relative overflow-hidden group shadow-sm`}
+              onClick={() => compFileInputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(e) => { e.preventDefault(); setIsDragging(false); if (e.dataTransfer.files.length) processCompFile(e.dataTransfer.files[0]); }}
+            >
+              <input type="file" ref={compFileInputRef} className="hidden" accept=".csv, .xlsx, .xls" onChange={(e) => { if (e.target.files?.length) processCompFile(e.target.files[0]); }} />
+              <div className="relative z-10">
+                <div className="bg-gray-100 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:bg-blue-100 group-hover:text-blue-600 transition">
+                  <FileSpreadsheet className="w-6 h-6 text-gray-400 group-hover:text-blue-600" />
+                </div>
+                <p className="text-sm text-gray-600 font-medium">Sube tu archivo <span className="font-bold text-gray-900">Excel</span> o <span className="font-bold text-gray-900">CSV</span></p>
+                <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-widest">Arrastra y suelta aquí</p>
+              </div>
+            </div>
+
+            <div className="bg-gray-50/50 rounded-2xl p-6 border border-gray-100 flex flex-col justify-center gap-4">
+               <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">Búsqueda Rápida</label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input 
+                      type="text" 
+                      placeholder="Buscar por nombre, teléfono o notas..."
+                      value={compSearch}
+                      onChange={e => setCompSearch(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition bg-white text-sm"
+                    />
+                  </div>
+               </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-4 py-4 border-t border-gray-100">
+            <div className="flex bg-gray-100 p-1 rounded-[14px] border border-gray-200/50 shadow-inner">
+              {[
+                { id: 'all', label: 'Todos', color: 'gray' },
+                { id: 'trf', label: 'TRF', color: 'blue' },
+                { id: 'activities', label: 'Actividades', color: 'emerald' }
+              ].map(sub => (
+                <button
+                  key={sub.id}
+                  onClick={() => setCompSubTab(sub.id as any)}
+                  className={`px-5 py-2 rounded-xl text-[10px] font-extrabold uppercase tracking-widest transition-all duration-200 ${
+                    compSubTab === sub.id 
+                      ? 'bg-white text-blue-700 shadow-md ring-1 ring-black/5' 
+                      : 'text-gray-500 hover:text-gray-800'
+                  }`}
+                >
+                  {sub.label}
+                </button>
+              ))}
+            </div>
+            
+            {filteredCompRecords.length > 0 && (
+              <div className="flex gap-4">
+                <div className="flex flex-col items-end">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Total</span>
+                  <span className="text-xl font-bold text-gray-900 font-display">{filteredCompRecords.length}</span>
+                </div>
+                {filteredCompRecords.some(r => r.isDuplicate) && (
+                  <div className="flex flex-col items-end">
+                    <span className="text-[10px] font-bold text-orange-400 uppercase tracking-widest">Duplicados</span>
+                    <span className="text-xl font-bold text-orange-600 font-display">{filteredCompRecords.filter(r => r.isDuplicate).length}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="border border-gray-200 rounded-xl overflow-hidden mt-6">
              <div className="hidden md:grid grid-cols-12 gap-4 bg-gray-50 p-4 text-xs font-semibold uppercase text-gray-700 border-b border-gray-200">
                 <div className="col-span-3">Titular de la reserva</div>
-                <div className="col-span-2">Teléfono</div>
+                <div className="col-span-2">Teléfonos</div>
                 <div className="col-span-3">Email</div>
                 <div className="col-span-3">Notas</div>
                 <div className="col-span-1">Acciones</div>
              </div>
              <div className="divide-y divide-gray-200 bg-white">
-                {compRecords.length === 0 ? (
+                {filteredCompRecords.length === 0 ? (
                   <div className="p-8 text-center text-gray-400 text-sm italic">
-                     Aún no has cargado ningún registro COMP. Selecciona el tipo "Planilla COMP" arriba y sube tu archivo.
+                     {compSubTab === 'all' 
+                       ? "Aún no has cargado ningún registro COMP. Selecciona el tipo \"Planilla COMP\" arriba y sube tu archivo."
+                       : `No hay registros marcados como ${compSubTab.toUpperCase()} en esta lista.`}
                   </div>
                 ) : (
-                  compRecords.map((c, idx) => (
+                  filteredCompRecords.map((c, idx) => (
                     <div key={c.id} className={`p-4 grid grid-cols-1 md:grid-cols-12 gap-4 items-center transition border-l-2 ${c.isDuplicate ? 'bg-yellow-50/50 border-yellow-400' : 'hover:bg-blue-50/30 border-transparent hover:border-blue-500'}`}>
                        <div className="md:col-span-3">
                           <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase mb-1">Titular de la reserva</label>
@@ -532,37 +813,77 @@ export default function App() {
                             value={c.titular} 
                             onChange={e => {
                                const newR = [...compRecords];
-                               newR[idx].titular = e.target.value;
+                               const rIdx = newR.findIndex(r => r.id === c.id);
+                               newR[rIdx].titular = e.target.value;
                                setCompRecords(detectCompDuplicates(newR));
                             }}
                             className="w-full bg-transparent border-transparent hover:border-gray-200 focus:border-blue-500 rounded px-2 text-sm font-medium focus:bg-white"
                           />
                        </div>
-                       <div className="md:col-span-2 flex items-center gap-2">
-                          <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase">Teléfono</label>
-                          <div className="flex-1">
-                            <input 
-                              type="text" 
-                              value={c.phone} 
-                              onChange={e => {
+                       <div className="md:col-span-2 flex flex-col gap-1.5 py-1">
+                          <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase">Teléfonos</label>
+                          <div className="flex flex-col gap-1">
+                            {(c.phone || "").split(',').map((p, pIdx, arr) => {
+                              const cleanP = p.trim();
+                              return (
+                                <div key={`${c.id}-phone-${pIdx}`} className="flex items-center gap-1.5 group/phone">
+                                  <div className="flex-1">
+                                    <input 
+                                      type="text" 
+                                      value={cleanP} 
+                                      onChange={e => {
+                                         const pParts = [...arr];
+                                         pParts[pIdx] = e.target.value;
+                                         const newR = [...compRecords];
+                                         const rIdx = newR.findIndex(r => r.id === c.id);
+                                         newR[rIdx].phone = pParts.join(', ');
+                                         setCompRecords(detectCompDuplicates(newR));
+                                      }}
+                                      placeholder={`Teléfono ${pIdx + 1}`}
+                                      className="w-full bg-transparent border-transparent hover:border-gray-200 focus:border-blue-500 rounded px-2 text-sm focus:bg-white font-mono"
+                                    />
+                                  </div>
+                                  {cleanP.replace(/\D/g, '') && (
+                                    <a 
+                                      href={`https://wa.me/${cleanP.replace(/\D/g, '')}`} 
+                                      target="_blank" 
+                                      rel="noreferrer"
+                                      className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition shadow-sm border border-green-200 flex-shrink-0"
+                                      title={`WhatsApp: ${cleanP}`}
+                                    >
+                                      <MessageCircle className="w-3.5 h-3.5" />
+                                    </a>
+                                  )}
+                                  {arr.length > 1 && (
+                                    <button
+                                      onClick={() => {
+                                        const pParts = arr.filter((_, i) => i !== pIdx);
+                                        const newR = [...compRecords];
+                                        const rIdx = newR.findIndex(r => r.id === c.id);
+                                        newR[rIdx].phone = pParts.join(', ');
+                                        setCompRecords(detectCompDuplicates(newR));
+                                      }}
+                                      className="p-1 opacity-0 group-hover/phone:opacity-100 text-red-300 hover:text-red-500 transition"
+                                      title="Quitar este número"
+                                    >
+                                      ✕
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            <button
+                               onClick={() => {
                                  const newR = [...compRecords];
-                                 newR[idx].phone = e.target.value;
-                                 setCompRecords(detectCompDuplicates(newR));
-                              }}
-                              className="w-full bg-transparent border-transparent hover:border-gray-200 focus:border-blue-500 rounded px-2 text-sm focus:bg-white font-mono"
-                            />
-                          </div>
-                          {c.phone && (
-                            <a 
-                              href={`https://wa.me/${c.phone.replace(/\D/g, '')}`} 
-                              target="_blank" 
-                              rel="noreferrer"
-                              className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition shadow-sm border border-green-200 flex-shrink-0"
-                              title="Abrir WhatsApp"
+                                 const rIdx = newR.findIndex(r => r.id === c.id);
+                                 newR[rIdx].phone = c.phone ? `${c.phone}, ` : " ";
+                                 setCompRecords(newR);
+                               }}
+                               className="text-[10px] text-blue-500 hover:text-blue-700 w-fit italic ml-2 opacity-60 hover:opacity-100 transition-opacity"
                             >
-                              <MessageCircle className="w-3.5 h-3.5" />
-                            </a>
-                          )}
+                              + Agregar teléfono
+                            </button>
+                          </div>
                        </div>
                        <div className="md:col-span-3">
                           <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase mb-1">Email</label>
@@ -571,7 +892,8 @@ export default function App() {
                             value={c.email} 
                             onChange={e => {
                                const newR = [...compRecords];
-                               newR[idx].email = e.target.value;
+                               const rIdx = newR.findIndex(r => r.id === c.id);
+                               newR[rIdx].email = e.target.value;
                                setCompRecords(detectCompDuplicates(newR));
                             }}
                             className="w-full bg-transparent border-transparent hover:border-gray-200 focus:border-blue-500 rounded px-2 text-sm text-blue-700/80 focus:bg-white"
@@ -579,22 +901,37 @@ export default function App() {
                        </div>
                        <div className="md:col-span-3">
                           <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase mb-1">Notas</label>
-                          <input 
-                            type="text" 
-                            value={c.notes} 
-                            onChange={e => {
-                               const newR = [...compRecords];
-                               newR[idx].notes = e.target.value;
-                               setCompRecords(detectCompDuplicates(newR));
-                            }}
-                            className="w-full bg-transparent border-transparent hover:border-gray-200 focus:border-blue-500 rounded px-2 text-[11px] text-gray-500 focus:bg-white truncate"
-                            title={c.notes}
-                          />
+                          <div className="flex gap-1 items-center">
+                            <input 
+                              type="text" 
+                              value={c.notes} 
+                              onChange={e => {
+                                 const newR = [...compRecords];
+                                 const rIdx = newR.findIndex(r => r.id === c.id);
+                                 newR[rIdx].notes = e.target.value;
+                                 setCompRecords(detectCompDuplicates(newR));
+                              }}
+                              className="w-full bg-transparent border-transparent hover:border-gray-200 focus:border-blue-500 rounded px-2 text-[11px] text-gray-500 focus:bg-white truncate"
+                              title={c.notes}
+                            />
+                            {c.notes.includes('[TRF]') && <span className="bg-blue-100 text-blue-700 text-[8px] font-bold px-1 rounded">TRF</span>}
+                            {c.notes.includes('[ACTIVITIES]') && <span className="bg-emerald-100 text-emerald-700 text-[8px] font-bold px-1 rounded">ACT</span>}
+                          </div>
                        </div>
-                       <div className="md:col-span-1 flex justify-end">
+                       <div className="md:col-span-1 flex justify-end gap-1">
+                          {c.isDuplicate && (
+                            <button 
+                              onClick={() => mergeRecords(c.id)}
+                              className="p-1 px-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded transition flex items-center gap-1"
+                              title="Fusionar con otros registros que comparten el mismo teléfono"
+                            >
+                              <GitMerge className="w-3.5 h-3.5" />
+                              <span className="md:hidden lg:inline text-[10px] font-bold uppercase">Fusionar</span>
+                            </button>
+                          )}
                           <button 
                             onClick={() => {
-                              const newR = compRecords.filter((_, i) => i !== idx);
+                              const newR = compRecords.filter(r => r.id !== c.id);
                               setCompRecords(detectCompDuplicates(newR));
                             }}
                             className="p-1 px-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition"
@@ -609,7 +946,7 @@ export default function App() {
              </div>
           </div>
         </div>
-      </div>
+      </motion.div>
     );
   };
 
@@ -923,10 +1260,39 @@ export default function App() {
     <div className="bg-gray-50 min-h-screen text-gray-800 font-sans">
       <div className="max-w-7xl mx-auto px-4 py-4 md:py-8">
         
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-6 border border-gray-200">
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900 mb-2">Panel de Control de Contactos con Verificación WhatsApp</h1>
-          <p className="text-sm text-gray-600">Sube un archivo Excel (.xlsx, .xls) o CSV, asocia las columnas y comprueba de forma manual o automática si los números disponen de WhatsApp activo.</p>
-        </div>
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-2xl shadow-sm p-6 mb-8 border border-gray-100 overflow-hidden relative"
+        >
+          <div className="absolute top-[-20px] right-[-20px] p-8 opacity-[0.03] rotate-12">
+             <MessageCircle className="w-48 h-48" />
+          </div>
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+            <div className="space-y-1">
+              <div className="flex items-center gap-3 mb-1">
+                <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-200">
+                  <FileSpreadsheet className="w-6 h-6 text-white" />
+                </div>
+                <h1 className="text-2xl md:text-3xl font-extrabold font-display text-gray-900 tracking-tight">WhatsApp <span className="text-blue-600">Pro</span> Manager</h1>
+              </div>
+              <p className="text-sm text-gray-500 max-w-xl">
+                Carga, concilia y verifica tus contactos. Especializado en planillas <span className="font-semibold text-gray-700 font-display">TRF</span>, <span className="font-semibold text-gray-700 font-display">COMP</span> y <span className="font-semibold text-gray-700 font-display">Actividades</span>.
+              </p>
+            </div>
+            
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 px-6 py-4 rounded-2xl border border-blue-100/50 flex items-center gap-4 shadow-sm">
+              <div className="relative">
+                <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white text-xl font-bold shadow-md border-2 border-white font-display">P</div>
+                <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow-sm" title="En línea"></div>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-blue-600 uppercase tracking-[0.2em] mb-0.5 font-display">Gestión Administrativa</p>
+                <p className="text-xl font-bold text-gray-900 leading-none font-display">¡Hola, Paola!</p>
+              </div>
+            </div>
+          </div>
+        </motion.div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
@@ -1030,8 +1396,13 @@ export default function App() {
           </div>
 
           <div className="space-y-6">
-            <div className="bg-white rounded-xl shadow-sm p-4 md:p-6 border border-gray-200">
-              <h2 className="text-lg font-semibold mb-4 text-gray-900">Configuración Global</h2>
+            <div className="bg-white rounded-2xl shadow-sm p-4 md:p-6 border border-gray-100">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="bg-blue-50 p-2 rounded-lg">
+                  <Settings className="w-5 h-5 text-blue-600" />
+                </div>
+                <h2 className="text-lg font-bold font-display text-gray-900 uppercase tracking-tight">Configuración Global</h2>
+              </div>
               
               <div className="mb-4">
                 <label className="block text-xs font-medium text-gray-600 mb-1">Fecha por defecto</label>
@@ -1143,32 +1514,49 @@ export default function App() {
           </div>
         </div>
 
-        <div id="data-section" className="bg-white rounded-xl shadow-sm p-4 md:p-6 mt-6 border border-gray-200 animate-in fade-in duration-300">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4 mb-6">
-            <div>
-              <h2 className="text-xl font-bold text-gray-950">3. Tablero de Gestión</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Control de contactos cargados y reporte cronológico de eventos</p>
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          id="data-section" 
+          className="bg-white rounded-2xl shadow-sm p-4 md:p-6 mt-8 border border-gray-100"
+        >
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 border-b border-gray-100 pb-6 mb-8">
+            <div className="flex items-center gap-4">
+              <div className="bg-blue-600 p-3 rounded-2xl shadow-lg shadow-blue-100">
+                <LayoutDashboard className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold font-display text-gray-900 leading-tight">3. Tablero de Gestión</h2>
+                <p className="text-xs text-gray-500 mt-1 uppercase tracking-widest font-semibold opacity-70">Control integral de contactos y eventos</p>
+              </div>
             </div>
             
-            <div className="flex bg-gray-100 p-1 rounded-xl">
-              <button
-                onClick={() => setActiveTab('contacts')}
-                className={`px-4 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all duration-150 ${activeTab === 'contacts' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-              >
-                📇 Lista de Contactos
-              </button>
-              <button
-                onClick={() => setActiveTab('report')}
-                className={`px-4 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all duration-150 ${activeTab === 'report' ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-              >
-                📅 Reporte de Eventos
-              </button>
-              <button
-                onClick={() => setActiveTab('comp')}
-                className={`px-4 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all duration-150 ${activeTab === 'comp' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-500 hover:text-blue-900'}`}
-              >
-                📊 COMP
-              </button>
+            <div className="flex bg-gray-100/80 p-1.5 rounded-2xl border border-gray-200/50 backdrop-blur-sm self-start">
+              {[
+                { id: 'contacts', label: 'Contactos', icon: <Users className="w-4 h-4" /> },
+                { id: 'report', label: 'Eventos', icon: <Calendar className="w-4 h-4" /> },
+                { id: 'comp', label: 'COMP', icon: <Share2 className="w-4 h-4" /> }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`relative flex items-center gap-2 px-6 py-2.5 rounded-[14px] text-xs font-bold uppercase tracking-wider transition-all duration-300 z-10 ${
+                    activeTab === tab.id 
+                      ? 'text-blue-700' 
+                      : 'text-gray-500 hover:text-gray-800'
+                  }`}
+                >
+                  {activeTab === tab.id && (
+                    <motion.div 
+                      layoutId="activeTab"
+                      className="absolute inset-0 bg-white shadow-sm border border-gray-200 rounded-[14px] z-[-1]"
+                      transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                    />
+                  )}
+                  {tab.icon}
+                  {tab.label}
+                </button>
+              ))}
             </div>
           </div>
           
@@ -1176,7 +1564,7 @@ export default function App() {
             <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm bg-white">
               <div className="hidden md:grid grid-cols-12 gap-4 bg-gray-50 p-4 text-xs font-semibold uppercase text-gray-700 border-b border-gray-200">
                 <div className="col-span-3">Nombre Completo de Contacto</div>
-                <div className="col-span-2">Teléfono</div>
+                <div className="col-span-2">Teléfonos</div>
                 <div className="col-span-2">Email</div>
                 <div className="col-span-1">Actividades</div>
                 <div className="col-span-2 text-center">WhatsApp</div>
@@ -1205,20 +1593,21 @@ export default function App() {
                       </div>
                       <div className="md:col-span-2 space-y-2">
                         <div>
-                          <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">Teléfono 1</label>
+                          <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">WhatsApp 1 / Móvil</label>
                           <input 
                             type="text" 
                             value={c.phone1} 
+                            placeholder="WhatsApp 1"
                             onChange={(e) => updateContact(index, 'phone1', e.target.value)} 
                             className="w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm transition-all duration-150" 
                           />
                         </div>
                         <div className={c.phone2 ? "block" : "hidden md:block"}>
-                          <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">Teléfono 2</label>
+                          <label className="block md:hidden text-[10px] font-bold text-gray-400 uppercase tracking-wider">WhatsApp 2 / Casa</label>
                           <input 
                             type="text" 
                             value={c.phone2} 
-                            placeholder="Teléfono 2 (opcional)"
+                            placeholder="WhatsApp 2"
                             onChange={(e) => updateContact(index, 'phone2', e.target.value)} 
                             className="w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm transition-all duration-150" 
                           />
@@ -1258,17 +1647,28 @@ export default function App() {
                       </div>
                       <div className="md:col-span-2 flex flex-col md:items-center justify-center gap-2 pt-2.5 md:pt-0 border-t md:border-t-0 border-gray-100">
                          <span className="block md:hidden text-[10px] font-bold text-gray-450 uppercase tracking-wider mr-auto">Exportar Contacto</span>
-                         <button 
-                            onClick={() => {
-                              const sharedGroup = getSharedGroup(c, contacts);
-                              const blob = generateVCFBlobs(sharedGroup);
-                              const cleanFilename = c.fullName.replace(/[^a-zA-Z0-9]/g, '_');
-                              downloadVCF(blob, `${cleanFilename}_contactos.vcf`);
-                            }} 
-                            className="w-full justify-center inline-flex items-center gap-1.5 text-[11px] bg-[#128C7E] hover:bg-[#075E54] text-white px-2 py-1.5 rounded font-semibold transition-colors shadow-sm text-center"
-                          >
-                            <Download className="w-3.5 h-3.5" /> Guardar contacto de WhatsApp
-                         </button>
+                         <div className="flex flex-col gap-1 w-full">
+                           <button 
+                              onClick={() => {
+                                const sharedGroup = getSharedGroup(c, contacts);
+                                const blob = generateVCFBlobs(sharedGroup);
+                                const cleanFilename = c.fullName.replace(/[^a-zA-Z0-9]/g, '_');
+                                downloadVCF(blob, `${cleanFilename}_contactos.vcf`);
+                              }} 
+                              className="w-full justify-center inline-flex items-center gap-1.5 text-[11px] bg-[#128C7E] hover:bg-[#075E54] text-white px-2 py-1.5 rounded font-semibold transition-colors shadow-sm text-center"
+                            >
+                              <Download className="w-3.5 h-3.5" /> Guardar contacto de WhatsApp
+                           </button>
+                           {c.isDuplicate && (
+                             <button
+                                onClick={() => mergeMainContacts(c.id)}
+                                className="w-full justify-center inline-flex items-center gap-1.5 text-[11px] bg-blue-50 text-blue-700 hover:bg-blue-100 px-2 py-1.5 rounded font-semibold transition-colors border border-blue-200"
+                                title="Fusionar este contacto con el original"
+                             >
+                               <GitMerge className="w-3.5 h-3.5" /> Fusionar Contacto
+                             </button>
+                           )}
+                         </div>
                       </div>
                     </div>
                   ))
@@ -1284,8 +1684,7 @@ export default function App() {
               <CompTab />
             </div>
           )}
-        </div>
-        
+        </motion.div>
       </div>
     </div>
   );
