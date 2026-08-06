@@ -4,8 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import piscisGeminisBg from './assets/images/piscis_geminis_bg_1785997145512.jpg';
-import { Download, AlertCircle, FileSpreadsheet, CheckCircle2, XCircle, MessageCircle, Eye, FileText, Calendar, GitMerge, Users, Settings, LayoutDashboard, Share2, Search, Filter, Image as ImageIcon, Bell, BellRing, Sparkles } from 'lucide-react';
+import { Download, AlertCircle, FileSpreadsheet, CheckCircle2, XCircle, MessageCircle, Eye, FileText, Calendar, GitMerge, Users, Settings, LayoutDashboard, Share2, Search, Filter } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
 import {
@@ -23,12 +22,12 @@ import {
   delay,
   checkWassenger,
   checkWASender,
-  formatPhone
+  formatPhone,
+  COUNTRIES_DATA
 } from './lib/utils';
 import { Contact, WaMethod, GlobalConfig, Mappings, CompRecord, SpreadsheetType } from './types';
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<'landing' | 'app'>('landing');
   const [spreadsheetType, setSpreadsheetType] = useState<SpreadsheetType>('trf');
   const [rawRows, setRawRows] = useState<string[][]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -40,6 +39,7 @@ export default function App() {
   
   const [config, setConfig] = useState<GlobalConfig>({
     defaultDate: '29/05/26',
+    defaultCountry: 'CH',
     waMethod: 'manual',
     waToken: ''
   });
@@ -51,12 +51,12 @@ export default function App() {
 
   useEffect(() => {
     if (rawRows.length > 1) {
-      const newContacts = generateContacts(rawRows, mappings, config.defaultDate);
+      const newContacts = generateContacts(rawRows, mappings, config.defaultDate, config.defaultCountry);
       setContacts(newContacts);
     } else {
       setContacts([]);
     }
-  }, [rawRows, mappings, config.defaultDate]);
+  }, [rawRows, mappings, config.defaultDate, config.defaultCountry]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -415,258 +415,8 @@ export default function App() {
     </div>;
   };
 
-  const [activeTab, setActiveTab] = useState<'contacts' | 'report' | 'comp' | 'gallery' | 'settings'>('contacts');
-  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'contacts' | 'report' | 'comp'>('contacts');
   const [reportSearch, setReportSearch] = useState('');
-  const [geminiPopupOpen, setGeminiPopupOpen] = useState(false);
-  const [unlockPassword, setUnlockPassword] = useState('');
-  const [unlockError, setUnlockError] = useState(false);
-
-  // Gemini popup interval configuration state
-  const [popupIntervalSeconds, setPopupIntervalSeconds] = useState<number>(() => {
-    const saved = localStorage.getItem('gemini_popup_interval');
-    return saved ? Math.max(5, parseInt(saved, 10) || 30) : 30;
-  });
-  const [popupEnabled, setPopupEnabled] = useState<boolean>(() => {
-    const saved = localStorage.getItem('gemini_popup_enabled');
-    return saved !== null ? saved === 'true' : true;
-  });
-  const [secondsUntilNextPopup, setSecondsUntilNextPopup] = useState<number>(popupIntervalSeconds);
-
-  useEffect(() => {
-    localStorage.setItem('gemini_popup_interval', popupIntervalSeconds.toString());
-  }, [popupIntervalSeconds]);
-
-  useEffect(() => {
-    localStorage.setItem('gemini_popup_enabled', popupEnabled.toString());
-  }, [popupEnabled]);
-
-  useEffect(() => {
-    if (!popupEnabled || popupIntervalSeconds <= 0) return;
-
-    setSecondsUntilNextPopup(popupIntervalSeconds);
-
-    const intervalTimer = setInterval(() => {
-      setSecondsUntilNextPopup(prev => {
-        if (prev <= 1) {
-          setGeminiPopupOpen(true);
-          return popupIntervalSeconds;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(intervalTimer);
-  }, [popupIntervalSeconds, popupEnabled]);
-
-  const handleImageUpload = (id: string, file: File, isComp = false) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      if (isComp) {
-        setCompRecords(compRecords.map(r => r.id === id ? { ...r, imageUrl: result } : r));
-      } else {
-        setContacts(contacts.map(c => c.id === id ? { ...c, imageUrl: result } : c));
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const GalleryTab = () => {
-    const allImages: { id: string; title: string; url: string; type: 'contact' | 'comp' }[] = [];
-    contacts.forEach(c => {
-      if (c.imageUrl) {
-        allImages.push({ id: c.id, title: c.fullName, url: c.imageUrl, type: 'contact' });
-      }
-    });
-    compRecords.forEach(r => {
-      if (r.imageUrl) {
-        allImages.push({ id: r.id, title: r.titular, url: r.imageUrl, type: 'comp' });
-      }
-    });
-
-    return (
-      <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm animate-in fade-in">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-lg font-bold text-gray-900">Galería de Imágenes y Vouchers</h3>
-            <p className="text-xs text-gray-500">Imágenes, comprobantes y capturas adjuntas a tus contactos y reservas.</p>
-          </div>
-          <span className="bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full">{allImages.length} imágenes</span>
-        </div>
-
-        {allImages.length === 0 ? (
-          <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-2xl">
-            <ImageIcon className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-sm font-medium text-gray-600">No hay imágenes adjuntas todavía.</p>
-            <p className="text-xs text-gray-400 mt-1">Adjunta imágenes desde las tablas de Contactos o COMP usando el botón de imagen en cada fila.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {allImages.map((img) => (
-              <div key={`${img.type}-${img.id}`} className="group relative bg-gray-50 rounded-xl overflow-hidden border border-gray-200 shadow-sm hover:shadow-md transition">
-                <div className="aspect-video bg-gray-100 overflow-hidden cursor-pointer" onClick={() => setLightboxImage(img.url)}>
-                  <img src={img.url} alt={img.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
-                </div>
-                <div className="p-3">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded mb-1 inline-block">
-                    {img.type === 'contact' ? 'Contacto' : 'COMP'}
-                  </span>
-                  <p className="text-xs font-semibold text-gray-900 truncate" title={img.title}>{img.title}</p>
-                  <button
-                    onClick={() => setLightboxImage(img.url)}
-                    className="mt-2 w-full text-center py-1 bg-white hover:bg-gray-50 text-gray-700 text-xs font-medium rounded border border-gray-200 transition flex items-center justify-center gap-1"
-                  >
-                    <Eye className="w-3.5 h-3.5" /> Ver en grande
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const SettingsTab = () => {
-    return (
-      <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm animate-in fade-in space-y-8">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div className="bg-blue-600 p-2.5 rounded-xl text-white shadow-md shadow-blue-200">
-              <Settings className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-gray-900 font-display">Configuración Global</h3>
-              <p className="text-xs text-gray-500">Ajusta los parámetros del sistema, notificaciones y automatizaciones de la aplicación.</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Gemini Popup Interval Card */}
-        <div className="bg-gradient-to-br from-blue-50/70 via-indigo-50/40 to-white p-6 rounded-2xl border border-blue-200 shadow-sm">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-blue-100 mb-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-xl flex items-center justify-center shadow-md">
-                <Sparkles className="w-5 h-5 animate-pulse" />
-              </div>
-              <div>
-                <h4 className="text-base font-bold text-gray-900">Recordatorio Automático de Gemini</h4>
-                <p className="text-xs text-gray-600">Configura cada cuántos segundos aparece la alerta flotante de Gemini.</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-xl border border-blue-200 shadow-2xs self-start md:self-auto">
-              <span className="text-xs font-semibold text-gray-700">Estado del Popup:</span>
-              <button
-                onClick={() => setPopupEnabled(!popupEnabled)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-hidden cursor-pointer ${
-                  popupEnabled ? 'bg-blue-600' : 'bg-gray-300'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    popupEnabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-              <span className={`text-xs font-bold ${popupEnabled ? 'text-blue-700' : 'text-gray-400'}`}>
-                {popupEnabled ? 'ACTIVO' : 'PAUSADO'}
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Input Frecuencia */}
-            <div className="space-y-3">
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
-                Frecuencia del Intervalo (Segundos)
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={5}
-                  max={3600}
-                  value={popupIntervalSeconds}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    setPopupIntervalSeconds(isNaN(val) ? 5 : Math.max(5, val));
-                  }}
-                  className="w-36 bg-white border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-900 shadow-2xs transition"
-                />
-                <span className="text-xs font-semibold text-gray-600">segundos</span>
-              </div>
-
-              <div className="pt-2">
-                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-2">Atajos Rápidos:</span>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { sec: 10, label: '10s' },
-                    { sec: 15, label: '15s' },
-                    { sec: 30, label: '30s (Por defecto)' },
-                    { sec: 60, label: '1 min' },
-                    { sec: 120, label: '2 min' },
-                    { sec: 300, label: '5 min' },
-                  ].map((preset) => (
-                    <button
-                      key={preset.sec}
-                      onClick={() => setPopupIntervalSeconds(preset.sec)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        popupIntervalSeconds === preset.sec
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Live Timer Preview & Test Trigger */}
-            <div className="bg-white p-4 rounded-xl border border-blue-100 flex flex-col justify-between shadow-2xs">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-gray-700">Temporizador en tiempo real:</span>
-                  <span className="text-xs font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200">
-                    {popupEnabled ? `${secondsUntilNextPopup}s restantes` : 'Pausado'}
-                  </span>
-                </div>
-                {popupEnabled && (
-                  <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden mb-3">
-                    <div 
-                      className="bg-gradient-to-r from-blue-500 to-indigo-600 h-full transition-all duration-1000 ease-linear rounded-full"
-                      style={{ width: `${Math.min(100, Math.max(0, (secondsUntilNextPopup / popupIntervalSeconds) * 100))}%` }}
-                    />
-                  </div>
-                )}
-                <p className="text-xs text-gray-500 leading-relaxed">
-                  El emergente saltará de manera automática cada <strong className="text-gray-900 font-bold">{popupIntervalSeconds} segundos</strong> mientras estés navegando la aplicación.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 pt-4">
-                <button
-                  onClick={() => setGeminiPopupOpen(true)}
-                  className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-2.5 px-4 rounded-xl shadow-sm hover:shadow transition text-xs flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Sparkles className="w-4 h-4" /> Probar Popup Ahora
-                </button>
-                <button
-                  onClick={() => setPopupIntervalSeconds(30)}
-                  className="px-3 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl text-xs transition cursor-pointer"
-                  title="Restablecer intervalo a 30 segundos"
-                >
-                  Restablecer (30s)
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   const mergeRecords = (sourceId: string) => {
     const recordToMerge = compRecords.find(r => r.id === sourceId);
@@ -1170,16 +920,7 @@ export default function App() {
                             {c.notes.includes('[ACTIVITIES]') && <span className="bg-emerald-100 text-emerald-700 text-[8px] font-bold px-1 rounded">ACT</span>}
                           </div>
                        </div>
-                       <div className="md:col-span-1 flex items-center justify-end gap-1">
-                          <label className="p-1 px-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition cursor-pointer flex items-center gap-1" title="Adjuntar imagen / comprobante">
-                            <ImageIcon className="w-3.5 h-3.5" />
-                            <input type="file" accept="image/*" className="hidden" onChange={(e) => {
-                              if (e.target.files?.[0]) handleImageUpload(c.id, e.target.files[0], true);
-                            }} />
-                          </label>
-                          {c.imageUrl && (
-                            <img src={c.imageUrl} alt={c.titular} onClick={() => setLightboxImage(c.imageUrl!)} className="w-7 h-7 rounded object-cover cursor-pointer hover:opacity-80 transition border border-gray-300 shrink-0" title="Ver imagen en grande" />
-                          )}
+                       <div className="md:col-span-1 flex justify-end gap-1">
                           {c.isDuplicate && (
                             <button 
                               onClick={() => mergeRecords(c.id)}
@@ -1212,10 +953,6 @@ export default function App() {
   };
 
   const EventReportTab = ({ contacts }: { contacts: Contact[] }) => {
-    const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
-      typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
-    );
-
     // Flat activities
     const allEvents = contacts.flatMap(c => {
       const activityParts = c.activities.split(',').map(a => a.trim()).filter(a => a);
@@ -1251,46 +988,6 @@ export default function App() {
         pax: rawPaxVal
       }));
     });
-
-    // Calculate urgent (<24h) events
-    const urgentEvents = allEvents.filter(ev => {
-      if (!ev.date) return false;
-      const now = new Date();
-      const diffHours = (ev.date.getTime() - now.getTime()) / (1000 * 60 * 60);
-      return diffHours >= -24 && diffHours <= 24;
-    });
-
-    const triggerNotification = async () => {
-      if (!('Notification' in window)) {
-        alert('Tu navegador no soporta la API de Notificaciones Web.');
-        return;
-      }
-
-      if (Notification.permission === 'granted') {
-        if (urgentEvents.length > 0) {
-          new Notification('🚨 Alerta: Eventos Próximos (<24hs)', {
-            body: `Se detectaron ${urgentEvents.length} evento(s) o llegada(s) dentro de las próximas 24 horas. ¡Atención prioritaria!`,
-            icon: '/favicon.ico'
-          });
-        } else {
-          new Notification('✅ Sin novedades urgentes', {
-            body: 'No hay eventos de menos de 24 horas programados actualmente.',
-            icon: '/favicon.ico'
-          });
-        }
-      } else if (Notification.permission !== 'denied') {
-        const perm = await Notification.requestPermission();
-        setNotifPermission(perm);
-        if (perm === 'granted') {
-          new Notification('🔔 Notificaciones Activadas', {
-            body: `Notificaciones habilitadas. Se detectaron ${urgentEvents.length} eventos de menos de 24hs.`,
-            icon: '/favicon.ico'
-          });
-        }
-      } else {
-        alert('Las notificaciones están bloqueadas en los permisos de tu navegador. Puedes habilitarlas desde la configuración del navegador.');
-      }
-    };
 
     // Filter by search
     const filteredEvents = allEvents.filter(ev => {
@@ -1332,38 +1029,6 @@ export default function App() {
 
     return (
       <div className="space-y-6">
-        {/* Banner Notificaciones Web Browser API */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-red-50/80 border border-red-200 p-4 rounded-xl shadow-xs">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-red-100 rounded-xl text-red-600 shrink-0">
-              <BellRing className="w-5 h-5 animate-bounce" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h4 className="text-xs font-bold text-red-900 uppercase tracking-wider">
-                  Notificaciones del Navegador (Eventos &lt; 24hs)
-                </h4>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${notifPermission === 'granted' ? 'bg-emerald-100 text-emerald-800' : notifPermission === 'denied' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'}`}>
-                  {notifPermission === 'granted' ? 'Activas' : notifPermission === 'denied' ? 'Bloqueadas' : 'Inactivas'}
-                </span>
-              </div>
-              <p className="text-xs text-red-700 mt-0.5">
-                {urgentEvents.length > 0 
-                  ? `🚨 ¡Atención! Hay ${urgentEvents.length} evento(s) o llegada(s) de menos de 24 horas.`
-                  : 'No se registran eventos o llegadas urgentes (<24hs) por el momento.'
-                }
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={triggerNotification}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 active:scale-95 text-white text-xs font-semibold px-4 py-2 rounded-lg transition shadow-sm shrink-0 cursor-pointer"
-          >
-            <Bell className="w-4 h-4" />
-            {notifPermission === 'granted' ? 'Enviar Notificación del Navegador' : 'Activar Notificaciones del Navegador'}
-          </button>
-        </div>
-
         <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-100">
           <div className="text-left">
             <h3 className="text-sm font-semibold text-gray-900">Resumen del Reporte de Actividades</h3>
@@ -1402,42 +1067,15 @@ export default function App() {
                       const phoneClean = phone.replace(/\D/g, '');
                       const text = encodeURIComponent(`Hola ${ev.cleanName}, te escribimos de la agencia para verificar tu actividad "${ev.activity}" programada para el día ${ev.dateStr}.`);
                       
-                      // Calculate if arrival date is within 24 hours
-                      let isUrgent24h = false;
-                      let isPast = false;
-                      if (ev.date) {
-                        const now = new Date();
-                        const diffHours = (ev.date.getTime() - now.getTime()) / (1000 * 60 * 60);
-                        if (diffHours >= -24 && diffHours <= 24) {
-                          isUrgent24h = true;
-                        } else if (diffHours < -24) {
-                          isPast = true;
-                        }
-                      }
-
                       return (
-                        <div key={ev.id} className={`p-4 bg-white rounded-xl border transition shadow-sm flex flex-col justify-between h-full ${isUrgent24h ? 'border-red-300 ring-2 ring-red-100 bg-red-50/20' : 'border-gray-200 hover:border-blue-300'}`}>
+                        <div key={ev.id} className="p-4 bg-white rounded-xl border border-gray-200 hover:border-blue-300 transition shadow-sm flex flex-col justify-between h-full">
                           <div>
                             <div className="flex justify-between items-start gap-2 mb-2">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-800">
-                                  {ev.activity}
-                                </span>
-                                {isUrgent24h && (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500 text-white animate-pulse shadow-sm" title="Llegada o actividad en menos de 24 hs">
-                                    <span className="w-2 h-2 rounded-full bg-white"></span>
-                                    &lt; 24hs Urgente
-                                  </span>
-                                )}
-                                {!isUrgent24h && ev.date && !isPast && (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-800" title="Fecha programada con tiempo">
-                                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                                    Programado
-                                  </span>
-                                )}
-                              </div>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-800">
+                                {ev.activity}
+                              </span>
                               {ev.pax && (
-                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600 shrink-0">
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600">
                                   👥 {ev.pax} pax
                                 </span>
                               )}
@@ -1621,12 +1259,8 @@ export default function App() {
    };
 
   return (
-    <div 
-      className="min-h-screen text-gray-800 font-sans bg-cover bg-center bg-fixed relative"
-      style={{ backgroundImage: `url(${piscisGeminisBg})` }}
-    >
-      <div className="absolute inset-0 bg-gray-950/35 backdrop-blur-[1px] pointer-events-none" />
-      <div className="relative z-10 max-w-7xl mx-auto px-4 py-4 md:py-8">
+    <div className="bg-gray-50 min-h-screen text-gray-800 font-sans">
+      <div className="max-w-7xl mx-auto px-4 py-4 md:py-8">
         
         <motion.div 
           initial={{ opacity: 0, y: -20 }}
@@ -1642,7 +1276,7 @@ export default function App() {
                 <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-200">
                   <FileSpreadsheet className="w-6 h-6 text-white" />
                 </div>
-                <h1 className="text-2xl md:text-3xl font-extrabold font-display text-gray-900 tracking-tight">Divertite con geminis y pedile amanha que te cargue los contactos y todo por que la verdas me canse de tu forriada de desaparecer y me hablas de respeto cuando no hay respeto por nuestra pareja gracias por todo pedil a geminis que es mas divertido que te ayude dale saludos no te quiero ni ver la verdad me hiciste un favor y te crees pilla forriandome que odio tengo jamas te forrie jamas saluditos a geminis. agregar manana lo saco dale veo que no me extranaste ni tenes tiempo para hablarme y esperaste que me vaya para pegarme una patada GEMINIS ES MAS DIVERTIDO CON PISCIS UNA FORRIADA PARA MI POR ESO VEO QUE NO ME NECESITAS Y TE CAGASTE EN NOSOTROS</h1>
+                <h1 className="text-2xl md:text-3xl font-extrabold font-display text-gray-900 tracking-tight">WhatsApp <span className="text-blue-600">Pro</span> Manager</h1>
               </div>
               <p className="text-sm text-gray-500 max-w-xl">
                 Carga, concilia y verifica tus contactos. Especializado en planillas <span className="font-semibold text-gray-700 font-display">TRF</span>, <span className="font-semibold text-gray-700 font-display">COMP</span> y <span className="font-semibold text-gray-700 font-display">Actividades</span>.
@@ -1651,12 +1285,7 @@ export default function App() {
             
             <div className="bg-gradient-to-br from-blue-50 to-indigo-50 px-6 py-4 rounded-2xl border border-blue-100/50 flex items-center gap-4 shadow-sm">
               <div className="relative">
-                <img 
-                  src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250" 
-                  alt="Paola" 
-                  className="w-14 h-14 rounded-full object-cover shadow-md border-2 border-white"
-                  referrerPolicy="no-referrer"
-                />
+                <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white text-xl font-bold shadow-md border-2 border-white font-display">P</div>
                 <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow-sm" title="En línea"></div>
               </div>
               <div>
@@ -1777,6 +1406,20 @@ export default function App() {
                 <h2 className="text-lg font-bold font-display text-gray-900 uppercase tracking-tight">Configuración Global</h2>
               </div>
               
+              <div className="mb-4">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 block">País por defecto (Prefijo)</label>
+                <select 
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-4 focus:ring-blue-100 transition-all font-medium"
+                  value={config.defaultCountry}
+                  onChange={e => setConfig({ ...config, defaultCountry: e.target.value })}
+                >
+                  {COUNTRIES_DATA.map(c => (
+                    <option key={c.code} value={c.code}>{c.name} (+{c.prefix})</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-gray-400 mt-1.5 italic">Se usará para números sin prefijo internacional.</p>
+              </div>
+
               <div className="mb-4">
                 <label className="block text-xs font-medium text-gray-600 mb-1">Fecha por defecto</label>
                 <input 
@@ -1904,13 +1547,11 @@ export default function App() {
               </div>
             </div>
             
-            <div className="flex bg-gray-100/80 p-1.5 rounded-2xl border border-gray-200/50 backdrop-blur-sm self-start overflow-x-auto max-w-full">
+            <div className="flex bg-gray-100/80 p-1.5 rounded-2xl border border-gray-200/50 backdrop-blur-sm self-start">
               {[
                 { id: 'contacts', label: 'Contactos', icon: <Users className="w-4 h-4" /> },
                 { id: 'report', label: 'Eventos', icon: <Calendar className="w-4 h-4" /> },
-                { id: 'comp', label: 'COMP', icon: <Share2 className="w-4 h-4" /> },
-                { id: 'gallery', label: 'Galería', icon: <ImageIcon className="w-4 h-4" /> },
-                { id: 'settings', label: 'Configuración', icon: <Settings className="w-4 h-4" /> }
+                { id: 'comp', label: 'COMP', icon: <Share2 className="w-4 h-4" /> }
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -1964,15 +1605,6 @@ export default function App() {
                             onChange={(e) => updateContact(index, 'fullName', e.target.value)} 
                             className={`w-full bg-transparent border border-gray-200 md:border-transparent md:hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2.5 py-1.5 md:py-0.5 text-sm font-medium ${c.isDuplicate ? 'text-red-700' : 'text-gray-900'} transition-all duration-150`}
                           />
-                          <label className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition cursor-pointer flex-shrink-0" title="Adjuntar foto/imagen a este contacto">
-                            <ImageIcon className="w-4 h-4" />
-                            <input type="file" accept="image/*" className="hidden" onChange={(e) => {
-                              if (e.target.files?.[0]) handleImageUpload(c.id, e.target.files[0], false);
-                            }} />
-                          </label>
-                          {c.imageUrl && (
-                            <img src={c.imageUrl} alt={c.fullName} onClick={() => setLightboxImage(c.imageUrl!)} className="w-7 h-7 rounded object-cover cursor-pointer hover:opacity-80 transition border border-gray-300 shrink-0" title="Ver foto en grande" />
-                          )}
                         </div>
                       </div>
                       <div className="md:col-span-2 space-y-2">
@@ -2063,142 +1695,13 @@ export default function App() {
             <div className="bg-white rounded-xl p-2 animate-in fade-in duration-200">
               <EventReportTab contacts={contacts} />
             </div>
-          ) : activeTab === 'comp' ? (
-            <div className="bg-white rounded-xl p-2 animate-in fade-in duration-200">
-              <CompTab />
-            </div>
-          ) : activeTab === 'gallery' ? (
-            <div className="bg-white rounded-xl p-2 animate-in fade-in duration-200">
-              <GalleryTab />
-            </div>
           ) : (
             <div className="bg-white rounded-xl p-2 animate-in fade-in duration-200">
-              <SettingsTab />
+              <CompTab />
             </div>
           )}
         </motion.div>
       </div>
-
-      {lightboxImage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in" onClick={() => setLightboxImage(null)}>
-          <div className="relative max-w-4xl max-h-[90vh] overflow-hidden rounded-2xl bg-black p-2" onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => setLightboxImage(null)} className="absolute top-4 right-4 bg-black/60 hover:bg-black text-white rounded-full w-8 h-8 flex items-center justify-center text-sm z-10 transition">
-              ✕
-            </button>
-            <img src={lightboxImage} alt="Vista previa" className="max-w-full max-h-[85vh] object-contain rounded-xl mx-auto" />
-          </div>
-        </div>
-      )}
-
-      {geminiPopupOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200" onClick={() => {
-          if (unlockPassword.trim().toLowerCase() === 'soyunaforra') {
-            setGeminiPopupOpen(false);
-            setUnlockPassword('');
-            setUnlockError(false);
-          } else {
-            setUnlockError(true);
-          }
-        }}>
-          <div className="relative bg-white rounded-2xl p-6 md:p-8 max-w-md w-full shadow-2xl border-2 border-blue-500 text-center animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
-            <button 
-              onClick={() => {
-                if (unlockPassword.trim().toLowerCase() === 'soyunaforra') {
-                  setGeminiPopupOpen(false);
-                  setUnlockPassword('');
-                  setUnlockError(false);
-                } else {
-                  setUnlockError(true);
-                }
-              }}
-              className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 font-bold p-1 rounded-full hover:bg-gray-100 transition"
-              title="Escribe la contraseña 'soyunaforra' para cerrar"
-            >
-              ✕
-            </button>
-            <div className="w-14 h-14 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg shadow-blue-200 animate-bounce">
-              <Sparkles className="w-7 h-7" />
-            </div>
-            <h3 className="text-xl font-extrabold text-gray-900 mb-1 font-display">Recordatorio Gemini</h3>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 text-xs font-semibold rounded-full border border-blue-200 mb-3">
-              ⏱️ Frecuencia: cada {popupIntervalSeconds} seg
-            </div>
-
-            <p className="text-base font-bold text-blue-800 bg-blue-50/80 p-4 rounded-xl border border-blue-200 mb-4 shadow-xs leading-snug">
-              a divertirse con geminis Pao dale con todo Campeona sos la mejor Forriando a sebastian Geniaaa
-            </p>
-
-            {/* Input de contraseña para desbloquear */}
-            <div className="mb-4 text-left">
-              <label className="block text-xs font-extrabold text-gray-700 mb-1.5 text-center">
-                🔒 Ingrese la contraseña <span className="text-blue-700 underline font-mono">soyunaforra</span> para desbloquear:
-              </label>
-              <input
-                type="text"
-                value={unlockPassword}
-                onChange={(e) => {
-                  setUnlockPassword(e.target.value);
-                  if (unlockError) setUnlockError(false);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    if (e.currentTarget.value.trim().toLowerCase() === 'soyunaforra') {
-                      setGeminiPopupOpen(false);
-                      setUnlockPassword('');
-                      setUnlockError(false);
-                    } else {
-                      setUnlockError(true);
-                    }
-                  }
-                }}
-                placeholder="Escribe 'soyunaforra' aquí..."
-                className={`w-full px-4 py-2.5 rounded-xl border-2 text-center text-sm font-bold shadow-inner transition focus:outline-hidden ${
-                  unlockError
-                    ? 'border-red-500 bg-red-50 text-red-900 focus:ring-2 focus:ring-red-200'
-                    : 'border-blue-300 bg-white text-gray-900 focus:border-blue-600 focus:ring-2 focus:ring-blue-100'
-                }`}
-                autoFocus
-              />
-              {unlockError && (
-                <p className="text-xs font-extrabold text-red-600 mt-1.5 text-center animate-bounce">
-                  ❌ Contraseña incorrecta. Debes escribir "soyunaforra"
-                </p>
-              )}
-            </div>
-
-            <button
-              onClick={() => {
-                if (unlockPassword.trim().toLowerCase() === 'soyunaforra') {
-                  setGeminiPopupOpen(false);
-                  setUnlockPassword('');
-                  setUnlockError(false);
-                } else {
-                  setUnlockError(true);
-                }
-              }}
-              className="w-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold py-3 px-6 rounded-xl shadow-md hover:shadow-lg transition-all duration-150 cursor-pointer text-xs mb-3 leading-tight"
-            >
-              soy una idiota por que manana voy a cargar los contactos y hacer las planillas por forriar y faltarle el respeto y pedir respeto cuando nunca lo respete como homre exijiendo respto ahh segui escuchando  a norita que te aconseja bien y habla con Jorgelina que tu ex te hiso un labura terrible Boluda al final Me terminaste Perdiendo y las que te Aconsejan se Borran y te dejan sola BOLUDA ANDA AL MERCADO A COMPRAR UN POCO DE MI AMOR NO TE LO VAN A VENDER  BOLUDA AL FINAL TE PORTASTE COMO UNA FORRA CONMIGO CUANDO YO TE AME BIEN Y NO ME BANQUE TU FALTA DE RESPETO BOLUDA
-            </button>
-
-            <button
-              onClick={() => {
-                if (unlockPassword.trim().toLowerCase() === 'soyunaforra') {
-                  setGeminiPopupOpen(false);
-                  setUnlockPassword('');
-                  setUnlockError(false);
-                  setActiveTab('settings');
-                } else {
-                  setUnlockError(true);
-                }
-              }}
-              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-xl text-xs transition flex items-center justify-center gap-1.5 border border-gray-200 cursor-pointer"
-            >
-              <Settings className="w-3.5 h-3.5 text-gray-500" /> Cambiar Frecuencia del Recordatorio
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

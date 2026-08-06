@@ -114,28 +114,50 @@ export function computeInitialMappings(headers: string[], rows: string[][]): Map
   return result as Mappings;
 }
 
+export const COUNTRIES_DATA = [
+  { code: 'CH', name: 'Chile', prefix: '56', length: 9 },
+  { code: 'AR', name: 'Argentina', prefix: '54', length: 10 },
+  { code: 'BR', name: 'Brasil', prefix: '55', length: 11 },
+  { code: 'CO', name: 'Colombia', prefix: '57', length: 10 },
+  { code: 'PE', name: 'Perú', prefix: '51', length: 9 },
+  { code: 'MX', name: 'México', prefix: '52', length: 10 },
+  { code: 'URU', name: 'Uruguay', prefix: '598', length: 8 },
+  { code: 'PY', name: 'Paraguay', prefix: '595', length: 9 },
+  { code: 'BOL', name: 'Bolivia', prefix: '591', length: 8 },
+  { code: 'GUA', name: 'Guatemala', prefix: '502', length: 8 },
+  { code: 'CR', name: 'Costa Rica', prefix: '506', length: 8 },
+  { code: 'USA', name: 'USA/Canadá', prefix: '1', length: 10 },
+  { code: 'ESP', name: 'España', prefix: '34', length: 9 },
+];
+
 export function getCountryCode(phone: string): string {
   const digits = phone.replace(/\D/g, '');
-  if (digits.startsWith('56')) return 'CH';
-  if (digits.startsWith('55')) return 'BR';
-  if (digits.startsWith('54')) return 'AR';
-  if (digits.startsWith('57')) return 'CO';
-  if (digits.startsWith('51')) return 'PE';
-  if (digits.startsWith('52')) return 'MX';
-  if (digits.startsWith('502')) return 'GUA';
-  if (digits.startsWith('506')) return 'CR';
-  if (digits.startsWith('595')) return 'PY';
-  if (digits.startsWith('598')) return 'URU';
-  if (digits.startsWith('591')) return 'BOL';
+  for (const c of COUNTRIES_DATA) {
+    if (digits.startsWith(c.prefix)) return c.code;
+  }
   return 'CH';
 }
 
-export function formatPhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  if (!digits.startsWith('+') && digits.length > 0) {
+export function formatPhone(phone: string, defaultCountryCode?: string): string {
+  let digits = phone.replace(/\D/g, '');
+  if (!digits) return '';
+
+  // If it starts with +, we assume it's already got a prefix
+  if (phone.trim().startsWith('+')) {
     return '+' + digits;
   }
-  return digits;
+
+  // Check if it already starts with a known prefix
+  const alreadyHasPrefix = COUNTRIES_DATA.some(c => digits.startsWith(c.prefix) && digits.length > c.length);
+  
+  if (!alreadyHasPrefix && defaultCountryCode) {
+    const country = COUNTRIES_DATA.find(c => c.code === defaultCountryCode);
+    if (country) {
+      return '+' + country.prefix + digits;
+    }
+  }
+
+  return '+' + digits;
 }
 
 export function extractActivityAndDate(inputStr: string, defaultDt: string): { activity: string; date: string } {
@@ -179,7 +201,7 @@ export function extractActivityAndDate(inputStr: string, defaultDt: string): { a
   return { activity: trimmed, date: defaultDt };
 }
 
-export function generateContacts(rawRows: string[][], mappings: Mappings, defaultDate: string): Contact[] {
+export function generateContacts(rawRows: string[][], mappings: Mappings, defaultDate: string, defaultCountry: string): Contact[] {
   if (rawRows.length < 2) return [];
 
   const parsedContacts: Contact[] = [];
@@ -257,17 +279,18 @@ export function generateContacts(rawRows: string[][], mappings: Mappings, defaul
 
     if (!name || (!p1 && !p2)) continue;
 
+    const cleanPhone1 = p1 ? formatPhone(p1, defaultCountry) : "";
+    const cleanPhone2 = p2 ? formatPhone(p2, defaultCountry) : "";
+
     let finalName = "";
 
     if (name.includes(' en ') && (name.includes('CH') || name.includes('BR') || name.includes('AR') || name.includes('CO') || name.includes('PE'))) {
       finalName = name;
     } else {
-      const country = getCountryCode(p1 || p2);
+      const country = getCountryCode(cleanPhone1 || cleanPhone2);
       finalName = `${dateStr} ${country}x${pax} ${name} - en ${hotel || 'Hotel'}`;
     }
 
-    const cleanPhone1 = p1 ? formatPhone(p1) : "";
-    const cleanPhone2 = p2 ? formatPhone(p2) : "";
     const cleanEmail = (email && email.toLowerCase() !== '(no especificado)' && email !== 'n/a') ? email : "";
 
     const cleanPhoneId = (cleanPhone1 || cleanPhone2 || "").replace(/\D/g, "");
