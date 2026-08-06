@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import piscisGeminisBg from './assets/images/piscis_geminis_bg_1785997145512.jpg';
+import coupleDinnerPhoto from './assets/images/couple_dinner_photo_1785999516656.jpg';
 import { Download, AlertCircle, FileSpreadsheet, CheckCircle2, XCircle, MessageCircle, Eye, FileText, Calendar, GitMerge, Users, Settings, LayoutDashboard, Share2, Search, Filter, Image as ImageIcon, Bell, BellRing, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
@@ -1926,14 +1927,19 @@ export default function App() {
               <Sparkles className="w-7 h-7" />
             </div>
             <h3 className="text-xl font-extrabold text-gray-900 mb-2 font-display">Recordatorio Gemini</h3>
+            
+            <div className="mb-4 overflow-hidden rounded-xl border border-gray-200 shadow-sm max-h-48 flex items-center justify-center bg-gray-100">
+              <img src={coupleDinnerPhoto} alt="Foto de pareja" className="w-full h-full object-cover" />
+            </div>
+
             <p className="text-base font-bold text-blue-800 bg-blue-50/80 p-4 rounded-xl border border-blue-200 mb-6 shadow-xs leading-snug">
-              pedile ageminis que te cargue los contacto
+              a divertirse con geminis Pao dale con todo Campeona sos la mejor Forriando a sebastian Geniaaa
             </p>
             <button
               onClick={() => setGeminiPopupOpen(false)}
               className="w-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold py-3 px-6 rounded-xl shadow-md hover:shadow-lg transition-all duration-150 cursor-pointer text-sm"
             >
-              Entendido
+              soy una idiota por que manana voy a cargar los contactos y hacer las planillas por forriar y faltarle el respeto y pedir respeto cuando nunca lo respete como homre exijiendo respto ahh segui escuchando  a norita que te aconseja bien y habla con Jorgelina que tu ex te hiso un labura terrible Boluda al final Me terminaste Perdiendo y las que te Aconsejan se Borran y te dejan sola BOLUDA ANDA AL MERCADO A COMPRAR UN POCO DE MI AMOR NO TE LO VAN A VENDER  BOLUDA AL FINAL TE PORTASTE COMO UNA FORRA CONMIGO CUANDO YO TE AME BIEN Y NO ME BANQUE TU FALTA DE RESPETO BOLUDA
             </button>
           </div>
         </div>
