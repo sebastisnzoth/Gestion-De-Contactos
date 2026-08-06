@@ -415,17 +415,49 @@ export default function App() {
     </div>;
   };
 
-  const [activeTab, setActiveTab] = useState<'contacts' | 'report' | 'comp' | 'gallery'>('contacts');
+  const [activeTab, setActiveTab] = useState<'contacts' | 'report' | 'comp' | 'gallery' | 'settings'>('contacts');
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [reportSearch, setReportSearch] = useState('');
   const [geminiPopupOpen, setGeminiPopupOpen] = useState(false);
+  const [unlockPassword, setUnlockPassword] = useState('');
+  const [unlockError, setUnlockError] = useState(false);
+
+  // Gemini popup interval configuration state
+  const [popupIntervalSeconds, setPopupIntervalSeconds] = useState<number>(() => {
+    const saved = localStorage.getItem('gemini_popup_interval');
+    return saved ? Math.max(5, parseInt(saved, 10) || 30) : 30;
+  });
+  const [popupEnabled, setPopupEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem('gemini_popup_enabled');
+    return saved !== null ? saved === 'true' : true;
+  });
+  const [secondsUntilNextPopup, setSecondsUntilNextPopup] = useState<number>(popupIntervalSeconds);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setGeminiPopupOpen(true);
-    }, 30000);
-    return () => clearInterval(interval);
-  }, []);
+    localStorage.setItem('gemini_popup_interval', popupIntervalSeconds.toString());
+  }, [popupIntervalSeconds]);
+
+  useEffect(() => {
+    localStorage.setItem('gemini_popup_enabled', popupEnabled.toString());
+  }, [popupEnabled]);
+
+  useEffect(() => {
+    if (!popupEnabled || popupIntervalSeconds <= 0) return;
+
+    setSecondsUntilNextPopup(popupIntervalSeconds);
+
+    const intervalTimer = setInterval(() => {
+      setSecondsUntilNextPopup(prev => {
+        if (prev <= 1) {
+          setGeminiPopupOpen(true);
+          return popupIntervalSeconds;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(intervalTimer);
+  }, [popupIntervalSeconds, popupEnabled]);
 
   const handleImageUpload = (id: string, file: File, isComp = false) => {
     const reader = new FileReader();
@@ -492,6 +524,146 @@ export default function App() {
             ))}
           </div>
         )}
+      </div>
+    );
+  };
+
+  const SettingsTab = () => {
+    return (
+      <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm animate-in fade-in space-y-8">
+        <div>
+          <div className="flex items-center gap-3 mb-2">
+            <div className="bg-blue-600 p-2.5 rounded-xl text-white shadow-md shadow-blue-200">
+              <Settings className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-gray-900 font-display">Configuración Global</h3>
+              <p className="text-xs text-gray-500">Ajusta los parámetros del sistema, notificaciones y automatizaciones de la aplicación.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Gemini Popup Interval Card */}
+        <div className="bg-gradient-to-br from-blue-50/70 via-indigo-50/40 to-white p-6 rounded-2xl border border-blue-200 shadow-sm">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-blue-100 mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-xl flex items-center justify-center shadow-md">
+                <Sparkles className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <h4 className="text-base font-bold text-gray-900">Recordatorio Automático de Gemini</h4>
+                <p className="text-xs text-gray-600">Configura cada cuántos segundos aparece la alerta flotante de Gemini.</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-xl border border-blue-200 shadow-2xs self-start md:self-auto">
+              <span className="text-xs font-semibold text-gray-700">Estado del Popup:</span>
+              <button
+                onClick={() => setPopupEnabled(!popupEnabled)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-hidden cursor-pointer ${
+                  popupEnabled ? 'bg-blue-600' : 'bg-gray-300'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    popupEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+              <span className={`text-xs font-bold ${popupEnabled ? 'text-blue-700' : 'text-gray-400'}`}>
+                {popupEnabled ? 'ACTIVO' : 'PAUSADO'}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Input Frecuencia */}
+            <div className="space-y-3">
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
+                Frecuencia del Intervalo (Segundos)
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={5}
+                  max={3600}
+                  value={popupIntervalSeconds}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    setPopupIntervalSeconds(isNaN(val) ? 5 : Math.max(5, val));
+                  }}
+                  className="w-36 bg-white border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-900 shadow-2xs transition"
+                />
+                <span className="text-xs font-semibold text-gray-600">segundos</span>
+              </div>
+
+              <div className="pt-2">
+                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-2">Atajos Rápidos:</span>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { sec: 10, label: '10s' },
+                    { sec: 15, label: '15s' },
+                    { sec: 30, label: '30s (Por defecto)' },
+                    { sec: 60, label: '1 min' },
+                    { sec: 120, label: '2 min' },
+                    { sec: 300, label: '5 min' },
+                  ].map((preset) => (
+                    <button
+                      key={preset.sec}
+                      onClick={() => setPopupIntervalSeconds(preset.sec)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        popupIntervalSeconds === preset.sec
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Live Timer Preview & Test Trigger */}
+            <div className="bg-white p-4 rounded-xl border border-blue-100 flex flex-col justify-between shadow-2xs">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-gray-700">Temporizador en tiempo real:</span>
+                  <span className="text-xs font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200">
+                    {popupEnabled ? `${secondsUntilNextPopup}s restantes` : 'Pausado'}
+                  </span>
+                </div>
+                {popupEnabled && (
+                  <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden mb-3">
+                    <div 
+                      className="bg-gradient-to-r from-blue-500 to-indigo-600 h-full transition-all duration-1000 ease-linear rounded-full"
+                      style={{ width: `${Math.min(100, Math.max(0, (secondsUntilNextPopup / popupIntervalSeconds) * 100))}%` }}
+                    />
+                  </div>
+                )}
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  El emergente saltará de manera automática cada <strong className="text-gray-900 font-bold">{popupIntervalSeconds} segundos</strong> mientras estés navegando la aplicación.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 pt-4">
+                <button
+                  onClick={() => setGeminiPopupOpen(true)}
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-2.5 px-4 rounded-xl shadow-sm hover:shadow transition text-xs flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4" /> Probar Popup Ahora
+                </button>
+                <button
+                  onClick={() => setPopupIntervalSeconds(30)}
+                  className="px-3 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl text-xs transition cursor-pointer"
+                  title="Restablecer intervalo a 30 segundos"
+                >
+                  Restablecer (30s)
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   };
@@ -1732,12 +1904,13 @@ export default function App() {
               </div>
             </div>
             
-            <div className="flex bg-gray-100/80 p-1.5 rounded-2xl border border-gray-200/50 backdrop-blur-sm self-start">
+            <div className="flex bg-gray-100/80 p-1.5 rounded-2xl border border-gray-200/50 backdrop-blur-sm self-start overflow-x-auto max-w-full">
               {[
                 { id: 'contacts', label: 'Contactos', icon: <Users className="w-4 h-4" /> },
                 { id: 'report', label: 'Eventos', icon: <Calendar className="w-4 h-4" /> },
                 { id: 'comp', label: 'COMP', icon: <Share2 className="w-4 h-4" /> },
-                { id: 'gallery', label: 'Galería', icon: <ImageIcon className="w-4 h-4" /> }
+                { id: 'gallery', label: 'Galería', icon: <ImageIcon className="w-4 h-4" /> },
+                { id: 'settings', label: 'Configuración', icon: <Settings className="w-4 h-4" /> }
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -1894,9 +2067,13 @@ export default function App() {
             <div className="bg-white rounded-xl p-2 animate-in fade-in duration-200">
               <CompTab />
             </div>
-          ) : (
+          ) : activeTab === 'gallery' ? (
             <div className="bg-white rounded-xl p-2 animate-in fade-in duration-200">
               <GalleryTab />
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl p-2 animate-in fade-in duration-200">
+              <SettingsTab />
             </div>
           )}
         </motion.div>
@@ -1914,27 +2091,110 @@ export default function App() {
       )}
 
       {geminiPopupOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200" onClick={() => setGeminiPopupOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200" onClick={() => {
+          if (unlockPassword.trim().toLowerCase() === 'soyunaforra') {
+            setGeminiPopupOpen(false);
+            setUnlockPassword('');
+            setUnlockError(false);
+          } else {
+            setUnlockError(true);
+          }
+        }}>
           <div className="relative bg-white rounded-2xl p-6 md:p-8 max-w-md w-full shadow-2xl border-2 border-blue-500 text-center animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
             <button 
-              onClick={() => setGeminiPopupOpen(false)}
+              onClick={() => {
+                if (unlockPassword.trim().toLowerCase() === 'soyunaforra') {
+                  setGeminiPopupOpen(false);
+                  setUnlockPassword('');
+                  setUnlockError(false);
+                } else {
+                  setUnlockError(true);
+                }
+              }}
               className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 font-bold p-1 rounded-full hover:bg-gray-100 transition"
+              title="Escribe la contraseña 'soyunaforra' para cerrar"
             >
               ✕
             </button>
-            <div className="w-14 h-14 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-200 animate-bounce">
+            <div className="w-14 h-14 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg shadow-blue-200 animate-bounce">
               <Sparkles className="w-7 h-7" />
             </div>
-            <h3 className="text-xl font-extrabold text-gray-900 mb-2 font-display">Recordatorio Gemini</h3>
+            <h3 className="text-xl font-extrabold text-gray-900 mb-1 font-display">Recordatorio Gemini</h3>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 text-xs font-semibold rounded-full border border-blue-200 mb-3">
+              ⏱️ Frecuencia: cada {popupIntervalSeconds} seg
+            </div>
 
-            <p className="text-base font-bold text-blue-800 bg-blue-50/80 p-4 rounded-xl border border-blue-200 mb-6 shadow-xs leading-snug">
+            <p className="text-base font-bold text-blue-800 bg-blue-50/80 p-4 rounded-xl border border-blue-200 mb-4 shadow-xs leading-snug">
               a divertirse con geminis Pao dale con todo Campeona sos la mejor Forriando a sebastian Geniaaa
             </p>
+
+            {/* Input de contraseña para desbloquear */}
+            <div className="mb-4 text-left">
+              <label className="block text-xs font-extrabold text-gray-700 mb-1.5 text-center">
+                🔒 Ingrese la contraseña <span className="text-blue-700 underline font-mono">soyunaforra</span> para desbloquear:
+              </label>
+              <input
+                type="text"
+                value={unlockPassword}
+                onChange={(e) => {
+                  setUnlockPassword(e.target.value);
+                  if (unlockError) setUnlockError(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (e.currentTarget.value.trim().toLowerCase() === 'soyunaforra') {
+                      setGeminiPopupOpen(false);
+                      setUnlockPassword('');
+                      setUnlockError(false);
+                    } else {
+                      setUnlockError(true);
+                    }
+                  }
+                }}
+                placeholder="Escribe 'soyunaforra' aquí..."
+                className={`w-full px-4 py-2.5 rounded-xl border-2 text-center text-sm font-bold shadow-inner transition focus:outline-hidden ${
+                  unlockError
+                    ? 'border-red-500 bg-red-50 text-red-900 focus:ring-2 focus:ring-red-200'
+                    : 'border-blue-300 bg-white text-gray-900 focus:border-blue-600 focus:ring-2 focus:ring-blue-100'
+                }`}
+                autoFocus
+              />
+              {unlockError && (
+                <p className="text-xs font-extrabold text-red-600 mt-1.5 text-center animate-bounce">
+                  ❌ Contraseña incorrecta. Debes escribir "soyunaforra"
+                </p>
+              )}
+            </div>
+
             <button
-              onClick={() => setGeminiPopupOpen(false)}
-              className="w-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold py-3 px-6 rounded-xl shadow-md hover:shadow-lg transition-all duration-150 cursor-pointer text-sm"
+              onClick={() => {
+                if (unlockPassword.trim().toLowerCase() === 'soyunaforra') {
+                  setGeminiPopupOpen(false);
+                  setUnlockPassword('');
+                  setUnlockError(false);
+                } else {
+                  setUnlockError(true);
+                }
+              }}
+              className="w-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold py-3 px-6 rounded-xl shadow-md hover:shadow-lg transition-all duration-150 cursor-pointer text-xs mb-3 leading-tight"
             >
               soy una idiota por que manana voy a cargar los contactos y hacer las planillas por forriar y faltarle el respeto y pedir respeto cuando nunca lo respete como homre exijiendo respto ahh segui escuchando  a norita que te aconseja bien y habla con Jorgelina que tu ex te hiso un labura terrible Boluda al final Me terminaste Perdiendo y las que te Aconsejan se Borran y te dejan sola BOLUDA ANDA AL MERCADO A COMPRAR UN POCO DE MI AMOR NO TE LO VAN A VENDER  BOLUDA AL FINAL TE PORTASTE COMO UNA FORRA CONMIGO CUANDO YO TE AME BIEN Y NO ME BANQUE TU FALTA DE RESPETO BOLUDA
+            </button>
+
+            <button
+              onClick={() => {
+                if (unlockPassword.trim().toLowerCase() === 'soyunaforra') {
+                  setGeminiPopupOpen(false);
+                  setUnlockPassword('');
+                  setUnlockError(false);
+                  setActiveTab('settings');
+                } else {
+                  setUnlockError(true);
+                }
+              }}
+              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-xl text-xs transition flex items-center justify-center gap-1.5 border border-gray-200 cursor-pointer"
+            >
+              <Settings className="w-3.5 h-3.5 text-gray-500" /> Cambiar Frecuencia del Recordatorio
             </button>
           </div>
         </div>
