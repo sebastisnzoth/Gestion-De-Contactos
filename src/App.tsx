@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import piscisGeminisBg from './assets/images/piscis_geminis_bg_1785997145512.jpg';
 import { Download, AlertCircle, FileSpreadsheet, CheckCircle2, XCircle, MessageCircle, Eye, FileText, Calendar, GitMerge, Users, Settings, LayoutDashboard, Share2, Search, Filter, Image as ImageIcon, Bell, BellRing } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
@@ -1440,8 +1441,12 @@ export default function App() {
    };
 
   return (
-    <div className="bg-gray-50 min-h-screen text-gray-800 font-sans">
-      <div className="max-w-7xl mx-auto px-4 py-4 md:py-8">
+    <div 
+      className="min-h-screen text-gray-800 font-sans bg-cover bg-center bg-fixed relative"
+      style={{ backgroundImage: `url(${piscisGeminisBg})` }}
+    >
+      <div className="absolute inset-0 bg-gray-950/35 backdrop-blur-[1px] pointer-events-none" />
+      <div className="relative z-10 max-w-7xl mx-auto px-4 py-4 md:py-8">
         
         <motion.div 
           initial={{ opacity: 0, y: -20 }}
@@ -1457,7 +1462,7 @@ export default function App() {
                 <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-200">
                   <FileSpreadsheet className="w-6 h-6 text-white" />
                 </div>
-                <h1 className="text-2xl md:text-3xl font-extrabold font-display text-gray-900 tracking-tight">Divertite con geminis y pedile amanha que te cargue los contactos y todo por que la verdas me canse de tu forriada de desaparecer y me hablas de respeto cuando no hay respeto por nuestra pareja gracias por todo pedil a geminis que es mas divertido que te ayude dale saludos no te quiero ni ver la verdad me hiciste un favor y te crees pilla forriandome que odio tengo jamas te forrie jamas saluditos a geminis</h1>
+                <h1 className="text-2xl md:text-3xl font-extrabold font-display text-gray-900 tracking-tight">Divertite con geminis y pedile amanha que te cargue los contactos y todo por que la verdas me canse de tu forriada de desaparecer y me hablas de respeto cuando no hay respeto por nuestra pareja gracias por todo pedil a geminis que es mas divertido que te ayude dale saludos no te quiero ni ver la verdad me hiciste un favor y te crees pilla forriandome que odio tengo jamas te forrie jamas saluditos a geminis. agregar manana lo saco dale veo que no me extranaste ni tenes tiempo para hablarme y esperaste que me vaya para pegarme una patada GEMINIS ES MAS DIVERTIDO CON PISCIS UNA FORRIADA PARA MI POR ESO VEO QUE NO ME NECESITAS Y TE CAGASTE EN NOSOTROS</h1>
               </div>
               <p className="text-sm text-gray-500 max-w-xl">
                 Carga, concilia y verifica tus contactos. Especializado en planillas <span className="font-semibold text-gray-700 font-display">TRF</span>, <span className="font-semibold text-gray-700 font-display">COMP</span> y <span className="font-semibold text-gray-700 font-display">Actividades</span>.
