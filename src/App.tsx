@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import piscisGeminisBg from './assets/images/piscis_geminis_bg_1785997145512.jpg';
-import { Download, AlertCircle, FileSpreadsheet, CheckCircle2, XCircle, MessageCircle, Eye, FileText, Calendar, GitMerge, Users, Settings, LayoutDashboard, Share2, Search, Filter, Image as ImageIcon, Bell, BellRing } from 'lucide-react';
+import { Download, AlertCircle, FileSpreadsheet, CheckCircle2, XCircle, MessageCircle, Eye, FileText, Calendar, GitMerge, Users, Settings, LayoutDashboard, Share2, Search, Filter, Image as ImageIcon, Bell, BellRing, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
 import {
@@ -418,6 +418,14 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'contacts' | 'report' | 'comp' | 'gallery'>('contacts');
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [reportSearch, setReportSearch] = useState('');
+  const [geminiPopupOpen, setGeminiPopupOpen] = useState(false);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setGeminiPopupOpen(true);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleImageUpload = (id: string, file: File, isComp = false) => {
     const reader = new FileReader();
@@ -1901,6 +1909,32 @@ export default function App() {
               ✕
             </button>
             <img src={lightboxImage} alt="Vista previa" className="max-w-full max-h-[85vh] object-contain rounded-xl mx-auto" />
+          </div>
+        </div>
+      )}
+
+      {geminiPopupOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200" onClick={() => setGeminiPopupOpen(false)}>
+          <div className="relative bg-white rounded-2xl p-6 md:p-8 max-w-md w-full shadow-2xl border-2 border-blue-500 text-center animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+            <button 
+              onClick={() => setGeminiPopupOpen(false)}
+              className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 font-bold p-1 rounded-full hover:bg-gray-100 transition"
+            >
+              ✕
+            </button>
+            <div className="w-14 h-14 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-200 animate-bounce">
+              <Sparkles className="w-7 h-7" />
+            </div>
+            <h3 className="text-xl font-extrabold text-gray-900 mb-2 font-display">Recordatorio Gemini</h3>
+            <p className="text-base font-bold text-blue-800 bg-blue-50/80 p-4 rounded-xl border border-blue-200 mb-6 shadow-xs leading-snug">
+              pedile ageminis que te cargue los contacto
+            </p>
+            <button
+              onClick={() => setGeminiPopupOpen(false)}
+              className="w-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold py-3 px-6 rounded-xl shadow-md hover:shadow-lg transition-all duration-150 cursor-pointer text-sm"
+            >
+              Entendido
+            </button>
           </div>
         </div>
       )}
