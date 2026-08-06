@@ -13,6 +13,7 @@ export interface Contact {
   waStatus1: WaStatus;
   waStatus2: WaStatus;
   isDuplicate: boolean;
+  imageUrl?: string;
 }
 
 export type SpreadsheetType = 'trf' | 'comp' | 'activities';
@@ -24,6 +25,7 @@ export interface CompRecord {
   phone: string;
   notes: string;
   isDuplicate?: boolean;
+  imageUrl?: string;
 }
 
 export interface Mappings {

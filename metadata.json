@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "WhatsApp Pro Manager",
+  "description": "Gestión de contactos, planillas TRF, COMP y Actividades con bienvenida para Paola e integración de calendario.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
