@@ -28,8 +28,6 @@ import {
 import { Contact, WaMethod, GlobalConfig, Mappings, CompRecord, SpreadsheetType } from './types';
 
 export default function App() {
-  const [isBlocked, setIsBlocked] = useState(true);
-  const [password, setPassword] = useState('');
   const [spreadsheetType, setSpreadsheetType] = useState<SpreadsheetType>('trf');
   const [rawRows, setRawRows] = useState<string[][]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -1261,36 +1259,7 @@ export default function App() {
    };
 
   return (
-    <div className="bg-gray-50 min-h-screen text-gray-800 font-sans relative">
-      {isBlocked && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-lg text-center border-4 border-red-500">
-            <h2 className="text-2xl font-bold mb-4 text-red-600">Herramienta Bloqueada</h2>
-            <p className="text-gray-800 mb-6 font-semibold">
-              Introduce la contraseña para desbloquear: pensa es algo que me cayo la ficha y no lo ves?
-            </p>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-xl mb-6 text-center"
-              placeholder="Contraseña"
-            />
-            <button 
-              onClick={() => {
-                if (password === 'amor') {
-                  setIsBlocked(false);
-                } else {
-                  alert('Contraseña incorrecta');
-                }
-              }}
-              className="px-6 py-2 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition"
-            >
-              Desbloquear
-            </button>
-          </div>
-        </div>
-      )}
+    <div className="bg-gray-50 min-h-screen text-gray-800 font-sans">
       <div className="max-w-7xl mx-auto px-4 py-4 md:py-8">
         
         <motion.div 
