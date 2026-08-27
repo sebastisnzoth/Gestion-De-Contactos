@@ -28,6 +28,7 @@ import {
 import { Contact, WaMethod, GlobalConfig, Mappings, CompRecord, SpreadsheetType } from './types';
 
 export default function App() {
+  const [isRestricted, setIsRestricted] = useState(true);
   const [spreadsheetType, setSpreadsheetType] = useState<SpreadsheetType>('trf');
   const [rawRows, setRawRows] = useState<string[][]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -1259,6 +1260,30 @@ export default function App() {
    };
 
   return (
+    <>
+      {isRestricted && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-gray-900/90 backdrop-blur-md">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center flex flex-col items-center">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
+              <span className="text-3xl">🚫</span>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">No Molestes</h2>
+            <p className="text-gray-600 mb-6">
+              La herramienta se encuentra temporalmente restringida. Ingrese la contraseña para desbloquear.
+            </p>
+            <input
+              type="password"
+              placeholder="Contraseña"
+              className="w-full border border-gray-300 rounded-lg px-4 py-2 mb-4 text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={(e) => {
+                if (e.target.value === (config.unlockPassword || 'senha')) {
+                  setIsRestricted(false);
+                }
+              }}
+            />
+          </div>
+        </div>
+      )}
     <div className="bg-gray-50 min-h-screen text-gray-800 font-sans">
       <div className="max-w-7xl mx-auto px-4 py-4 md:py-8">
         
@@ -1426,6 +1451,19 @@ export default function App() {
                   type="text" 
                   value={config.defaultDate} 
                   onChange={(e) => setConfig({ ...config, defaultDate: e.target.value })} 
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500" 
+                />
+              </div>
+
+              <hr className="my-4" />
+
+              <div className="mb-4">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Contraseña de Desbloqueo (Restricción)</label>
+                <input 
+                  type="text" 
+                  value={config.unlockPassword || ''} 
+                  placeholder="senha"
+                  onChange={(e) => setConfig({ ...config, unlockPassword: e.target.value })} 
                   className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm bg-gray-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500" 
                 />
               </div>
@@ -1703,6 +1741,7 @@ export default function App() {
         </motion.div>
       </div>
     </div>
+    </>
   );
 }
 
