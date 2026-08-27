@@ -41,5 +41,4 @@ export interface GlobalConfig {
   defaultCountry: string;
   waMethod: WaMethod;
   waToken: string;
-  unlockPassword?: string;
 }
