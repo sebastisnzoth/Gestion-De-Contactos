@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
-// Medianoche del 13 de noviembre de 2026, horario de Brasilia (UTC-03:00).
-const DEADLINE = new Date('2026-11-13T00:00:00-03:00').getTime();
+// Medianoche del 16 de noviembre de 2026, horario de Brasilia (UTC-03:00).
+const DEADLINE = new Date('2026-11-16T00:00:00-03:00').getTime();
 
 function getRemaining() {
   return Math.max(0, DEADLINE - Date.now());
@@ -50,7 +50,7 @@ export default function AvisoVencimiento() {
         ⚠️ Aviso importante
       </div>
       <div style={{ fontSize: 14, lineHeight: 1.5 }}>
-        Esta herramienta dejará de funcionar el <strong>13 de noviembre de 2026</strong>.
+        Esta herramienta dejará de funcionar el <strong>16 de noviembre de 2026</strong>.
       </div>
       <div style={{ fontSize: 12, marginTop: 10, opacity: 0.88 }}>
         {remaining > 0 ? 'Tiempo restante:' : 'La fecha anunciada ya llegó.'}
