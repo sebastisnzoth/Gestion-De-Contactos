@@ -37,12 +37,12 @@ export default function ServiceNotice({ children }: { children: ReactNode }) {
   }, []);
 
   const closeAndContact = () => {
-    // Open Instagram in a separate tab, then navigate this tab to WhatsApp.
-    // Browsers may block the extra tab if popup protection is enabled.
+    // Keep this tab on Gestión de Contactos and open both contact destinations.
+    // Opening both directly within the click handler maximizes browser compatibility.
     window.open('https://www.instagram.com/sebastian_zoth/', '_blank', 'noopener,noreferrer');
+    window.open('https://wa.me/5548996752532', '_blank', 'noopener,noreferrer');
     window.sessionStorage.setItem(NOTICE_DISMISSED_KEY, 'yes');
     setDismissed(true);
-    window.location.assign('https://wa.me/5548996752532');
   };
 
   if (!PAUSE_ENABLED) return <>{children}</>;
@@ -51,13 +51,14 @@ export default function ServiceNotice({ children }: { children: ReactNode }) {
   return (
     <>
       {!expired && children}
+      {expired && <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#f5f7fb', color: '#172033', padding: 24, textAlign: 'center' }}><div><h1>Herramienta temporalmente pausada</h1><p>El plazo de disponibilidad terminó. No se eliminaron datos ni contactos.</p></div></main>}
       {!expired && (
         <div style={{ position: 'fixed', bottom: 16, left: 16, right: 16, zIndex: 90, maxWidth: 720, margin: '0 auto', padding: '12px 18px', borderRadius: 16, background: '#172033', color: 'white', boxShadow: '0 10px 30px #0003', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }} role="status">
           <span>Disponibilidad de la herramienta hasta el viernes 13/11/2026</span>
           <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCountdown(remaining)}</strong>
         </div>
       )}
-      {(expired || !dismissed) && (
+      {!dismissed && (
         <div role="dialog" aria-modal="true" aria-labelledby="availability-title" style={{ position: 'fixed', inset: 0, zIndex: 100, background: '#080e1bcf', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
           <section style={{ width: '100%', maxWidth: 540, borderRadius: 24, background: 'white', color: '#15213a', padding: 'clamp(22px, 5vw, 38px)', boxShadow: '0 20px 70px #0005', textAlign: 'center' }}>
             <div style={{ fontSize: 34, marginBottom: 12 }} aria-hidden="true">⏳</div>
