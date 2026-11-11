@@ -1259,13 +1259,13 @@ export default function App() {
    };
 
   return (
-    <div className="bg-gray-50 min-h-screen text-gray-800 font-sans">
+    <div className="contact-manager min-h-screen text-gray-800 font-sans">
       <div className="max-w-7xl mx-auto px-4 py-4 md:py-8">
         
         <motion.div 
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl shadow-sm p-6 mb-8 border border-gray-100 overflow-hidden relative"
+          className="app-hero bg-white rounded-2xl shadow-sm p-6 mb-8 border border-gray-100 overflow-hidden relative"
         >
           <div className="absolute top-[-20px] right-[-20px] p-8 opacity-[0.03] rotate-12">
              <MessageCircle className="w-48 h-48" />
@@ -1276,21 +1276,20 @@ export default function App() {
                 <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-200">
                   <FileSpreadsheet className="w-6 h-6 text-white" />
                 </div>
-                <h1 className="text-2xl md:text-3xl font-extrabold font-display text-gray-900 tracking-tight">WhatsApp <span className="text-blue-600">Pro</span> Manager</h1>
+                <h1 className="text-2xl md:text-3xl font-extrabold font-display text-gray-900 tracking-tight">Gestión de <span className="text-blue-600">Contactos</span></h1>
               </div>
               <p className="text-sm text-gray-500 max-w-xl">
-                Carga, concilia y verifica tus contactos. Especializado en planillas <span className="font-semibold text-gray-700 font-display">TRF</span>, <span className="font-semibold text-gray-700 font-display">COMP</span> y <span className="font-semibold text-gray-700 font-display">Actividades</span>.
+                Importá, organizá y exportá contactos desde planillas <span className="font-semibold text-gray-700 font-display">TRF</span>, <span className="font-semibold text-gray-700 font-display">COMP</span> y <span className="font-semibold text-gray-700 font-display">Actividades</span>.
               </p>
             </div>
             
-            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 px-6 py-4 rounded-2xl border border-blue-100/50 flex items-center gap-4 shadow-sm">
-              <div className="relative">
-                <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white text-xl font-bold shadow-md border-2 border-white font-display">P</div>
-                <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow-sm" title="En línea"></div>
+            <div className="workspace-status flex items-center gap-3 px-5 py-3 rounded-2xl border">
+              <div className="workspace-status-icon flex items-center justify-center rounded-xl w-10 h-10" aria-hidden="true">
+                <CheckCircle2 className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-[10px] font-bold text-blue-600 uppercase tracking-[0.2em] mb-0.5 font-display">Gestión Administrativa</p>
-                <p className="text-xl font-bold text-gray-900 leading-none font-display">¡Hola, Paola!</p>
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em]">Espacio de trabajo</p>
+                <p className="text-sm font-bold leading-tight">Listo para procesar</p>
               </div>
             </div>
           </div>
