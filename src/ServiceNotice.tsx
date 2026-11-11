@@ -36,6 +36,15 @@ export default function ServiceNotice({ children }: { children: ReactNode }) {
     return () => window.clearInterval(interval);
   }, []);
 
+  const closeAndContact = () => {
+    // Open Instagram in a separate tab, then navigate this tab to WhatsApp.
+    // Browsers may block the extra tab if popup protection is enabled.
+    window.open('https://www.instagram.com/sebastian_zoth/', '_blank', 'noopener,noreferrer');
+    window.sessionStorage.setItem(NOTICE_DISMISSED_KEY, 'yes');
+    setDismissed(true);
+    window.location.assign('https://wa.me/5548996752532');
+  };
+
   if (!PAUSE_ENABLED) return <>{children}</>;
 
   const expired = remaining <= 0;
@@ -66,10 +75,10 @@ export default function ServiceNotice({ children }: { children: ReactNode }) {
               <>
                 <div aria-label="Cuenta regresiva" style={{ fontSize: 'clamp(23px, 6vw, 36px)', fontWeight: 800, letterSpacing: 1.5, fontVariantNumeric: 'tabular-nums', margin: '18px 0' }}>{formatCountdown(remaining)}</div>
                 <small style={{ display: 'block', marginBottom: 18, opacity: 0.7 }}>Días : horas : minutos : segundos</small>
-                <button type="button" onClick={() => { window.sessionStorage.setItem(NOTICE_DISMISSED_KEY, 'yes'); setDismissed(true); }} style={{ border: 0, borderRadius: 12, padding: '13px 24px', background: '#263bdb', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 15 }}>Entendido, continuar</button>
+                <button type="button" onClick={closeAndContact} style={{ border: 0, borderRadius: 12, padding: '13px 24px', background: '#263bdb', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 15 }}>Cerrar</button>
               </>
             )}
-            {expired && <p style={{ fontSize: 13, opacity: 0.7 }}>No se eliminaron archivos ni contactos.</p>}
+            {expired && <><p style={{ fontSize: 13, opacity: 0.7 }}>No se eliminaron archivos ni contactos.</p><button type="button" onClick={closeAndContact} style={{ border: 0, borderRadius: 12, padding: '13px 24px', background: '#263bdb', color: 'white', fontWeight: 700, cursor: 'pointer', fontSize: 15 }}>Cerrar</button></>}
           </section>
         </div>
       )}
